@@ -24,6 +24,7 @@ import System.Posix.Terminal
 #endif
 
 import Utils
+import Charsets
 import Errors
 import Files
 import FileInfo
@@ -52,9 +53,10 @@ guiStartFile = do
   when (opt_indicator command == "2") $ do
     syncUI $ do
     uiSuspendProgressIndicator
-    uiMessage' <- val uiMessage
+    (msg,filename)  <- val uiMessage
+    imsg <- i18n (msg ||| msgDo(cmd_name command))
     myPutStrLn   ""
-    myPutStr$    left_justify 72 (msgFile(cmd_name command) ++ uiMessage')
+    myPutStr$    left_justify 72 ("  "++format imsg filename)
     uiResumeProgressIndicator
     hFlush stdout
 
@@ -112,7 +114,7 @@ ask question ref_answer answer_on_u =  do
 
 -- |Собственно общение с пользователем происходит здесь
 ask_user question = syncUI $ pauseTiming go  where
-  go = do myPutStr$ "\n  "++question++" ("++valid_answers++")? "
+  go = do myPutStr$ "\n  "++question++"?\n  "++commented_answers++"? "
           hFlush stdout
           answer  <-  getLine >>== strLower
           when (answer=="q") $ do
@@ -131,6 +133,7 @@ askHelp = unlines [ "  Valid answers are:"
                   , "    q - quit program"
                   ]
 
+commented_answers = "(Y)es / (N)o / (A)lways / (S)kip all / (U)pdate all / (Q)uit"
 valid_answers = "y/n/a/s/u/q"
 
 
@@ -243,10 +246,10 @@ setConsoleTitle title = do
   withTString title c_SetConsoleTitle
 
 -- |Set console title (external)
-foreign import ccall unsafe "Environment.h EnvSetConsoleTitle"
+foreign import ccall safe "Environment.h EnvSetConsoleTitle"
   c_SetConsoleTitle :: TString -> IO ()
 
 -- |Reset console title
-foreign import ccall unsafe "Environment.h EnvResetConsoleTitle"
+foreign import ccall safe "Environment.h EnvResetConsoleTitle"
   resetConsoleTitle :: IO ()
 

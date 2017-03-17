@@ -5,12 +5,13 @@ module FileManUtils where
 
 import Prelude hiding (catch)
 import Control.Concurrent
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.Char
 import Data.IORef
 import Data.List
 import Data.Maybe
+import System.IO.Unsafe
 
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as New
@@ -22,7 +23,13 @@ import FileInfo
 import Options
 import UIBase
 import UI
-import ArhiveDirectory
+import Arhive7zLib
+
+
+-- |Пароли шифрования и расшифровки
+encryptionPassword  =  unsafePerformIO$ newIORef$ ""
+decryptionPassword  =  unsafePerformIO$ newIORef$ ""
+
 
 ----------------------------------------------------------------------------------------------------
 ---- Текущее состояние файл-менеджера --------------------------------------------------------------
@@ -39,6 +46,7 @@ data FM_State = FM_State { fm_window_      :: Maybe Window
                          , fm_history      :: HistoryFile
                          , fm_onChdir      :: [IO()]
                          , fm_sort_order   :: String
+                         , fm_passwords    :: [String]                       -- пароли, введённые пользователем за время текущей сессии
                          , subfm           :: SubFM_State
                          }
 
@@ -75,6 +83,17 @@ fm_curdir fm | isFM_Archive fm = fm_arcname fm .$takeDirectory
 fm_changeArcname arcname fm@(FM_State {subfm=subfm@FM_Archive{}}) =
                          fm {subfm = subfm {subfm_arcname=arcname}}
 
+-- |Сохранить список паролей расшифровки, использованных при выполнении команды
+fmSaveDecryptionPasswords fm' command = do
+  passwords <- get_opt_decryption_passwords command    -- сохраним список паролей, введённых пользователем
+  fm' .= \fm -> fm {fm_passwords = take 10 passwords}  -- ... по крайней мере первые 10 из них
+
+-- |Получить список паролей расшифровки
+fmGetDecryptionPasswords fm' = do
+  xpwd'     <- val decryptionPassword        -- пароль распаковки, введённый в Settings
+  passwords <- fm_passwords `fmap` val fm'   -- пароли, введённые пользователем в текущей сессии
+  return ((insertAt 1 (xpwd' &&& [xpwd']) (delete xpwd' passwords)))   -- на первом месте должен быть последний пароль, введённый вручную - поскольку 7z.dll поддерживает только один пароль
+
 
 ----------------------------------------------------------------------------------------------------
 ---- Операции над именами каталогов/файлов ---------------------------------------------------------
@@ -91,8 +110,8 @@ splitArcPath fm' fullname = do
   fm <- val fm'
   -- Сравним fullname с именем открытого в fm архива (arcname)
   -- Если arcname - префикс fullname, то разобьём fullname на имя архива arcname и каталог внутри него
-  let arcname = isFM_Archive fm.$bool "!^%^@!%" (fm_arcname fm)
-  if arcname `isParentDirOf` fullname
+  let arcname = fm_arcname fm
+  if isFM_Archive fm  &&  (arcname `isParentDirOf` fullname)
     then return$ ArcPath arcname (fullname `dropParentDir` arcname)
     else do
   -- Проверим существование каталога с таким именем (или "", чтобы избежать зацикливания)
@@ -173,7 +192,7 @@ fmname = fdBasename
 fdArtificialDir name = FileData { fdPackedDirectory = myPackStr ""
                                 , fdPackedBasename  = name
                                 , fdSize            = 0
-                                , fdTime            = aMINIMAL_POSSIBLE_DATETIME
+                                , fdTime            = aMINIMUM_POSSIBLE_FILETIME
                                 , fdIsDir           = True }
 
 
@@ -196,6 +215,11 @@ ftFilesIn dir artificial = f (map myPackStr$ splitDirectories dir)
   f (path0:path_rest) (FileTree _     subdirs) = lookup path0 subdirs.$ maybe [] (f path_rest)
   f []                (FileTree files subdirs) = (files++map (artificial.fst) subdirs)
                                                   .$ keepOnlyFirstOn fdPackedBasename
+
+-- |Найти информацию о файле по его полному пути в дереве
+ftFind fullpath tree = let (dir,name) = splitFileName fullpath
+                           files = ftFilesIn (dropTrailingPathSeparator dir) fdArtificialDir tree
+                       in  listToMaybe$ filter ((name==).fdBasename) files
 
 -- |Превращает список файлов в дерево
 buildTree x = x

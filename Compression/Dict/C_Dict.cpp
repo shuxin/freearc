@@ -115,7 +115,7 @@ int DICT_METHOD::compress (CALLBACK_FUNC *callback, void *auxdata)
 }
 
 // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_DICT)
-void DICT_METHOD::ShowCompressionMethod (char *buf)
+void DICT_METHOD::ShowCompressionMethod (char *buf, bool purify)
 {
     DICT_METHOD defaults; char BlockSizeStr[100], MinCompressionStr[100], MinWeakCharsStr[100];
     char MinLargeCntStr[100], MinMediumCntStr[100], MinSmallCntStr[100], MinRatioStr[100];

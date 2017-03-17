@@ -1,4 +1,5 @@
-set VER=0.60RC
+set VER=0.666
+::set VER=0.61-alpha
 ::set V=-alpha-2009-04-19
 
 del FreeArc*.exe FreeArc*.zip FreeArc*.bz2 FreeArc*.arc
@@ -14,10 +15,10 @@ rmdir ini
 move ArcShellExt-dll\* bin\ArcShellExt
 rmdir ArcShellExt-dll
 
-bin\arc a -t FreeArc-console FreeArc.url Addons\ -xFreeArc.reg bin\arc.* bin\facompress.dll bin\*.sfx bin\unarc.* bin\empty.arc bin\scripts\ Documentation\ License\ -xFreeArc-GUI*.* -xDocumentation\readme.txt -z=Documentation\readme.txt -m5x -mm- -sfx=bin\freearc-tiny.sfx
-ren FreeArc-console.exe FreeArc-console-%VER%-win32%V%.exe
+bin\arc a arc.arc Addons bin -x7z* -m5
+bin\arc a -t FreeArc-console-%VER%-win32%V%.exe FreeArc.url Addons\ -xFreeArc.reg bin\arc.* bin\facompress*.dll bin\*.sfx bin\unarc.* bin\empty.arc bin\scripts\ Documentation\ License\ -xFreeArc-GUI*.* -xDocumentation\readme.txt -z=Documentation\readme.txt -m5x -mm- -sfx=bin\freearc-tiny.sfx
 
-7z -mx a FreeArc-portable-%VER%-win32%V%.zip  -x!GTK* -x!FreeArc-* -x!*.nsi -x!*.nsh -x!*.cmd
+7z -mx a FreeArc-portable-%VER%-win32%V%.zip  -x!arc.arc -x!GTK* -x!FreeArc-* -x!*.nsi -x!*.nsh -x!*.cmd
 copy /b FreeArc-portable-%VER%-win32%V%.zip FreeArc-portable-update-%VER%-win32%V%.zip
 cd gtk2-themes
 7z -mx a ..\FreeArc-portable-%VER%-win32%V%.zip

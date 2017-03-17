@@ -15,6 +15,9 @@
 extern "C" {
 #endif
 
+// Signature of files made by my utilities
+#define BULAT_ZIGANSHIN_SIGNATURE 0x26351817
+
 //Коды ошибок
 #define FREEARC_OK                               0     /* ALL RIGHT */
 #define FREEARC_ERRCODE_GENERAL                  (-1)  /* Some error when (de)compressing */
@@ -95,22 +98,27 @@ typedef int CALLBACK_FUNC (const char *what, void *data, int size, void *auxdata
 {                                                                          \
     void *localBuf = (buf);                                                \
     int localSize  = (size);                                               \
-    if (localSize  &&  (errcode=callback("read",localBuf,localSize,auxdata)) != localSize) { \
-        if (errcode>=0) errcode=FREEARC_ERRCODE_READ;                      \
+    int localErrCode;                                                                                \
+    if (localSize  &&  (localErrCode=callback("read",localBuf,localSize,auxdata)) != localSize) {    \
+        errcode = localErrCode<0? localErrCode : FREEARC_ERRCODE_READ;                               \
         goto finished;                                                     \
     }                                                                      \
 }
 
 #define READ_LEN(len, buf, size)                                           \
 {                                                                          \
-    if ((errcode=(len)=callback("read",buf,size,auxdata)) < 0) {           \
+    int localErrCode;                                                      \
+    if ((localErrCode=(len)=callback("read",buf,size,auxdata)) < 0) {      \
+        errcode = localErrCode;                                            \
         goto finished;                                                     \
     }                                                                      \
 }
 
 #define READ_LEN_OR_EOF(len, buf, size)                                    \
 {                                                                          \
-    if ((errcode=(len)=callback("read",buf,size,auxdata)) <= 0) {          \
+    int localErrCode;                                                      \
+    if ((localErrCode=(len)=callback("read",buf,size,auxdata)) <= 0) {     \
+        errcode = localErrCode;                                            \
         goto finished;                                                     \
     }                                                                      \
 }
@@ -119,9 +127,12 @@ typedef int CALLBACK_FUNC (const char *what, void *data, int size, void *auxdata
 {                                                                          \
     void *localBuf = (buf);                                                \
     int localSize  = (size);                                               \
+    int localErrCode;                                                                   \
     /* "write" callback on success guarantees to write all the data and may return 0 */ \
-    if (localSize && (errcode=callback("write",localBuf,localSize,auxdata))<0)  \
+    if (localSize && (localErrCode=callback("write",localBuf,localSize,auxdata))<0) {   \
+        errcode = localErrCode;                                                         \
         goto finished;                                                     \
+    }                                                                      \
 }
 
 #define READ4(var)                                                         \
@@ -150,12 +161,18 @@ typedef int CALLBACK_FUNC (const char *what, void *data, int size, void *auxdata
 #define QUASIWRITE(size)                                                   \
 {                                                                          \
     int64 localSize = (size);                                              \
-    callback ("quasiwrite", &localSize, size, auxdata);                    \
+    callback ("quasiwrite", &localSize, (size), auxdata);                  \
 }
 
-#define ReturnErrorCode(x)                                                 \
+#define PROGRESS(insize,outsize)                                           \
 {                                                                          \
-    errcode = (x);                                                         \
+    int64 localSize[2] = {(insize),(outsize)};                             \
+    callback ("progress", localSize, 0, auxdata);                          \
+}
+
+#define ReturnErrorCode(err)                                               \
+{                                                                          \
+    errcode = (err);                                                       \
     goto finished;                                                         \
 }                                                                          \
 
@@ -185,6 +202,16 @@ typedef int CALLBACK_FUNC (const char *what, void *data, int size, void *auxdata
 
 
 // ****************************************************************************************************************************
+// ВЫЧИСЛЕНИЕ CRC-32                                                                                                          *
+// ****************************************************************************************************************************
+
+#define INIT_CRC 0xffffffff
+
+uint32 UpdateCRC (void *Addr, uint Size, uint32 StartCRC);     // Обновить CRC содержимым блока данных
+uint32 CalcCRC   (void *Addr, uint Size);                      // Вычислить CRC блока данных
+
+
+// ****************************************************************************************************************************
 // УТИЛИТЫ ********************************************************************************************************************
 // ****************************************************************************************************************************
 
@@ -206,11 +233,12 @@ MemSize compressorGetDecompressionMem (COMPRESSOR c);
 int  __cdecl GetCompressionThreads (void);
 void __cdecl SetCompressionThreads (int threads);
 
-// Load (accelerated) function from facompress.dll
-FARPROC LoadFromDLL (char *funcname);
-
 // Used in 4x4 only: read entire input buffer before compression begins, allocate output buffer large enough to hold entire compressed output
 extern int compress_all_at_once;
+void __cdecl Set_compress_all_at_once (int n);
+
+// Load (accelerated) function from facompress.dll
+FARPROC LoadFromDLL (char *funcname, DEFAULT(int only_facompress_mt, FALSE));
 
 // This function should cleanup Compression Library
 void compressionLib_cleanup (void);
@@ -241,7 +269,8 @@ int CompressWithHeader (char *method, CALLBACK_FUNC *callback, void *auxdata);
 int CompressMem           (char *method, void *input, int inputSize, void *output, int outputSize);
 int CompressMemWithHeader (char *method, void *input, int inputSize, void *output, int outputSize);
 // Вывести в out_method каноническое представление метода сжатия in_method (выполнить ParseCompressionMethod + ShowCompressionMethod)
-int CanonizeCompressionMethod (char *in_method, char *out_method);
+//   purify!=0: подготовить представление method к записи в архив (например, убрать :t:i для 4x4)
+int CanonizeCompressionMethod (char *in_method, char *out_method, int purify);
 // Информация о памяти, необходимой для упаковки/распаковки, размере словаря и размере блока.
 MemSize GetCompressionMem   (char *method);
 MemSize GetDictionary       (char *method);
@@ -281,7 +310,7 @@ public:
   virtual int compress   (CALLBACK_FUNC *callback, void *auxdata) = 0;
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к ParseCompressionMethod)
-  virtual void ShowCompressionMethod (char *buf) = 0;
+  virtual void ShowCompressionMethod (char *buf, bool purify) = 0;
 
   // Информация о памяти, необходимой для упаковки/распаковки,
   // размере словаря (то есть насколько далеко заглядывает алгоритм в поиске похожих данных - для lz/bs схем),
@@ -295,10 +324,10 @@ public:
   virtual void    SetDictionary       (MemSize dict) = 0;
   virtual void    SetBlockSize        (MemSize bs)   = 0;
   // Ограничить используемую при упаковке/распаковке память, или словарь / размер блока
-  void LimitCompressionMem   (MemSize mem)  {if (GetCompressionMem()   > mem)   SetCompressionMem(mem);}
-  void LimitDecompressionMem (MemSize mem)  {if (GetDecompressionMem() > mem)   SetDecompressionMem(mem);}
-  void LimitDictionary       (MemSize dict) {if (GetDictionary()       > dict)  SetDictionary(dict);}
-  void LimitBlockSize        (MemSize bs)   {if (GetBlockSize()        > bs)    SetBlockSize(bs);}
+  void LimitCompressionMem   (MemSize mem)  {if (mem>0  && GetCompressionMem()   > mem)   SetCompressionMem(mem);}
+  void LimitDecompressionMem (MemSize mem)  {if (mem>0  && GetDecompressionMem() > mem)   SetDecompressionMem(mem);}
+  void LimitDictionary       (MemSize dict) {if (dict>0 && GetDictionary()       > dict)  SetDictionary(dict);}
+  void LimitBlockSize        (MemSize bs)   {if (bs>0   && GetBlockSize()        > bs)    SetBlockSize(bs);}
 #endif
   virtual MemSize GetDecompressionMem (void)         = 0;
 
@@ -312,7 +341,7 @@ public:
   double addtime;  // Дополнительное время, потраченное на сжатие (во внешних программах, дополнительных threads и т.д.)
   COMPRESSION_METHOD() {addtime=0;}
   virtual ~COMPRESSION_METHOD() {}
-//  Debugging code:  char buf[100]; ShowCompressionMethod(buf); printf("%s : %u => %u\n", buf, GetCompressionMem(), mem);
+//  Debugging code:  char buf[100]; ShowCompressionMethod(buf,FALSE); printf("%s : %u => %u\n", buf, GetCompressionMem(), mem);
 };
 
 
@@ -347,7 +376,7 @@ public:
   virtual int compress   (CALLBACK_FUNC *callback, void *auxdata);
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия (функция, обратная к parse_STORING)
-  virtual void ShowCompressionMethod (char *buf);
+  virtual void ShowCompressionMethod (char *buf, bool purify);
 
   // Получить/установить объём памяти, используемой при упаковке/распаковке, размер словаря или размер блока
   virtual MemSize GetCompressionMem   (void)    {return BUFFER_SIZE;}
@@ -364,8 +393,39 @@ public:
 // Разборщик строки метода сжатия STORING
 COMPRESSION_METHOD* parse_STORING (char** parameters);
 
-#endif  // __cplusplus
 
+// ****************************************************************************************************************************
+// МЕТОД "СЖАТИЯ" CRC: читаем данные и ничего не пишем ************************************************************************
+// ****************************************************************************************************************************
+
+// Реализация метода "сжатия" STORING
+class CRC_METHOD : public COMPRESSION_METHOD
+{
+public:
+  // Функции распаковки и упаковки
+  virtual int decompress (CALLBACK_FUNC *callback, void *auxdata) {return FREEARC_ERRCODE_BAD_COMPRESSED_DATA;}
+#ifndef FREEARC_DECOMPRESS_ONLY
+  virtual int compress   (CALLBACK_FUNC *callback, void *auxdata);
+
+  // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия (функция, обратная к parse_STORING)
+  virtual void ShowCompressionMethod (char *buf, bool purify)     {sprintf (buf, "crc");}
+
+  // Получить/установить объём памяти, используемой при упаковке/распаковке, размер словаря или размер блока
+  virtual MemSize GetCompressionMem   (void)    {return BUFFER_SIZE;}
+  virtual MemSize GetDictionary       (void)    {return 0;}
+  virtual MemSize GetBlockSize        (void)    {return 0;}
+  virtual void    SetCompressionMem   (MemSize) {}
+  virtual void    SetDecompressionMem (MemSize) {}
+  virtual void    SetDictionary       (MemSize) {}
+  virtual void    SetBlockSize        (MemSize) {}
+#endif
+  virtual MemSize GetDecompressionMem (void)    {return BUFFER_SIZE;}
+};
+
+// Разборщик строки метода сжатия STORING
+COMPRESSION_METHOD* parse_CRC (char** parameters);
+
+#endif  // __cplusplus
 
 
 // ****************************************************************************************************************************

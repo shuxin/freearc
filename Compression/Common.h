@@ -91,12 +91,13 @@ typedef unsigned __int8      uint8,  byte, BYTE;
 #endif
 
 typedef unsigned             MemSize;          // объём памяти
-typedef char*                FILENAME;         // имя файла
+#define MEMSIZE_MAX          UINT_MAX
 #ifdef FREEARC_WIN
 typedef int64                FILESIZE;         // размер файла
 #else
 typedef off_t                FILESIZE;
 #endif
+typedef char*                FILENAME;         // имя файла
 
 
 /******************************************************************************
@@ -145,6 +146,14 @@ static inline char *drop_dirname (char *filename)
   return filename;
 }
 
+// Check that `subdir` is a sudirectory of `dir`
+static inline int is_subdir_of (char *subdir, char *dir)
+{
+  return subdir==NULL
+     ||  strequ(subdir,"")
+     || (start_with(dir,subdir)  &&  in_set0 (dir[strlen(subdir)], PATH_CHARS));
+}
+
 
 // ****************************************************************************
 // FILE OPERATIONS ************************************************************
@@ -159,6 +168,11 @@ static inline char *drop_dirname (char *filename)
 #include <tchar.h>
 typedef TCHAR* CFILENAME;
 static inline int create_dir (CFILENAME name)   {return _tmkdir(name);}
+#ifdef FREEARC_64BIT
+#define file_seek(stream,pos)                   (_fseeki64(stream, (pos), SEEK_SET))
+#else
+#define file_seek(stream,pos)                   (fseeko64(stream, (pos), SEEK_SET))
+#endif
 #define set_flen(stream,new_size)               (chsize( file_no(stream), new_size ))
 #define get_flen(stream)                        (_filelengthi64(fileno(stream)))
 #define myeof(file)                             (feof(file))
@@ -207,6 +221,7 @@ typedef char  TCHAR;
 typedef int (*FARPROC) (void);
 
 static inline int create_dir (CFILENAME name)   {return mkdir(name,0777);}
+#define file_seek(stream,pos)                   (fseek(stream, (pos), SEEK_SET))
 #define get_flen(stream)                        (myfilelength( fileno (stream)))
 #define set_binary_mode(file)
 #define myeof(file)                             (get_flen(file) == ftell(file))
@@ -241,6 +256,8 @@ void SetFileDateTime (const CFILENAME Filename, time_t t); // Установить время/д
 void RunProgram (const CFILENAME filename, const CFILENAME curdir, int wait_finish);  // Execute program `filename` in the directory `curdir` optionally waiting until it finished
 int  RunCommand (const CFILENAME command,  const CFILENAME curdir, int wait_finish);  // Execute `command` in the directory `curdir` optionally waiting until it finished
 void RunFile    (const CFILENAME filename, const CFILENAME curdir, int wait_finish);  // Execute file `filename` in the directory `curdir` optionally waiting until it finished
+int  BeginCompressionThreadPriority (void);            // Установить приоритет треда какой полагается для тредов сжатия (распаковки, шифрования...)
+void EndCompressionThreadPriority (int old_priority);  // Восстановить приоритет треда таким, как мы его запомнили
 void SetTempDir (const CFILENAME dir);     // Set temporary files directory
 CFILENAME GetTempDir (void);               // Return last value set or GetTempPath (%TEMP)
 
@@ -384,6 +401,60 @@ static inline void setvalue64 (void *p, uint64 x)
 
 #endif //FREEARC_MOTOROLA_BYTE_ORDER
 
+
+static inline uint16 value16b (void *p)
+{
+#if defined(FREEARC_INTEL_BYTE_ORDER) && defined(_MSC_VER)
+  return _byteswap_ushort(value16(p));
+#else
+  uint8 *m = (uint8 *)p;
+  return (m[0] << 8) + m[1];
+#endif
+}
+
+static inline uint32 value32b (void *p)
+{
+#if defined(FREEARC_INTEL_BYTE_ORDER) && defined(_MSC_VER)
+  return _byteswap_ulong(value32(p));
+#elif __GNUC__ == 4 && __GNUC_MINOR__ > 2 || __GNUC__ > 4
+  return __builtin_bswap32(value32(p));
+#else
+  uint8 *m = (uint8 *)p;
+  return (m[0] << 24) + (m[1] << 16) + (m[2] << 8) + m[3];
+#endif
+}
+
+static inline void setvalue16b (void *p, uint32 x)
+{
+#if defined(FREEARC_INTEL_BYTE_ORDER) && defined(_MSC_VER)
+  uint16 *m = (uint16 *)p;
+  *m = _byteswap_ushort(x);
+#else
+  uint8 *m = (uint8 *)p;
+  m[0] = x >> 8;
+  m[1] = x;
+#endif
+}
+
+static inline void setvalue32b (void *p, uint32 x)
+{
+#if defined(FREEARC_INTEL_BYTE_ORDER) && defined(_MSC_VER)
+  uint32 *m = (uint32 *)p;
+  *m = _byteswap_ulong(x);
+#elif __GNUC__ == 4 && __GNUC_MINOR__ > 2 || __GNUC__ > 4
+  uint32 *m = (uint32 *)p;
+  *m = __builtin_bswap32(x);
+#else
+  uint8 *m = (uint8 *)p;
+  m[0] = x >> 24;
+  m[1] = x >> 16;
+  m[2] = x >> 8;
+  m[3] = x;
+#endif
+}
+
+
+
 // Check for equality
 #define val16equ(p,q)             (*(uint16*)(p) == *(uint16*)(q))
 #define val24equ(p,q)             (   value24(p) ==    value24(q))
@@ -406,9 +477,9 @@ extern jmp_buf jumper;
 // Процедура сообщения о неожиданных ошибочных ситуациях
 #ifndef CHECK
 #  if defined(FREEARC_WIN) && defined(FREEARC_GUI)
-#    define CHECK(a,b)           {if (!(a))  {if (jmpready) longjmp(jumper,1);  char *s=(char*)malloc(MY_FILENAME_MAX*4);  WCHAR *utf16=(WCHAR*) malloc(MY_FILENAME_MAX*4);  sprintf b;  utf8_to_utf16(s,utf16);  MessageBoxW(NULL, utf16, L"Error encountered", MB_ICONERROR);  ON_CHECK_FAIL();  exit(FREEARC_EXIT_ERROR);}}
+#    define CHECK(a,b)           {if (!(a))  {if (jmpready) longjmp(jumper,1);  char *s=(char*)malloc_msg(MY_FILENAME_MAX*4);  WCHAR *utf16=(WCHAR*) malloc_msg(MY_FILENAME_MAX*4);  sprintf b;  utf8_to_utf16(s,utf16);  MessageBoxW(NULL, utf16, L"Error encountered", MB_ICONERROR);  ON_CHECK_FAIL();  exit(FREEARC_EXIT_ERROR);}}
 #  elif defined(FREEARC_WIN)
-#    define CHECK(a,b)           {if (!(a))  {if (jmpready) longjmp(jumper,1);  char *s=(char*)malloc(MY_FILENAME_MAX*4),  *oem=(char*)malloc(MY_FILENAME_MAX*4);  sprintf b;  utf8_to_oem(s,oem);  printf("\n%s",oem);  ON_CHECK_FAIL();  exit(FREEARC_EXIT_ERROR);}}
+#    define CHECK(a,b)           {if (!(a))  {if (jmpready) longjmp(jumper,1);  char *s=(char*)malloc_msg(MY_FILENAME_MAX*4),  *oem=(char*)malloc_msg(MY_FILENAME_MAX*4);  sprintf b;  utf8_to_oem(s,oem);  printf("\n%s",oem);  ON_CHECK_FAIL();  exit(FREEARC_EXIT_ERROR);}}
 #  else
 #    define CHECK(a,b)           {if (!(a))  {if (jmpready) longjmp(jumper,1);  char s[MY_FILENAME_MAX*4];  sprintf b;  printf("\n%s",s);  ON_CHECK_FAIL();  exit(FREEARC_EXIT_ERROR);}}
 #  endif
@@ -417,6 +488,15 @@ extern jmp_buf jumper;
 #ifndef ON_CHECK_FAIL
 #define ON_CHECK_FAIL()
 #endif
+
+// Устанавливает Jump Point с переходом на метку label
+#define SET_JMP_POINT_GOTO(label)                                                      \
+{                                                                                      \
+  if (!jmpready && setjmp(jumper) != 0)                                                \
+    /* Сюда мы попадём при возникновении ошибки в одной из вызываемых процедур */      \
+    {jmpready = FALSE; goto label;}                                                    \
+  jmpready = TRUE;                                                                     \
+}
 
 // Устанавливает Jump Point с кодом возврата retcode
 #define SET_JMP_POINT(retcode)                                                         \
@@ -492,6 +572,7 @@ void BigFree(void *address) throw();
 // ****************************************************************************
 void strncopy (char *to, char *from, int len);   // Копирует строчку from в to, но не более len символов
 int  split (char *str, char splitter, char **result, int result_size);  // Разбить строку str на подстроки, разделённые символом splitter
+void join (char **src, char splitter, char *result, int result_size);   // Объединить NULL-terminated массив строк src в строку result, ставя между строками разделитель splitter
 char*subst (char *original, char *from, char *to);  // Заменяет в строке original все вхождения from на to
 char*trim_spaces (char *s);                      // Пропускает пробелы в начале строки и убирает их в конце, модифицируя строку
 char *str_replace_n (char *orig, char *from, int how_many, char *to);   // Replace from:how_many substring and put result in new allocated area
@@ -541,6 +622,8 @@ static inline MemSize lb (MemSize n)
 static inline MemSize roundup_to_power_of (MemSize n, MemSize base)
 {
     MemSize result = base;
+    if (!n)
+        return 0;
     if (!(--n))
         return 1;
     if (base == 2)
@@ -708,6 +791,15 @@ struct MYFILE
 
   void setname (MYFILE &base, FILENAME filename) {SetBaseDir (base.utf8name); setname (filename);}
 
+  void change_executable_ext (FILENAME ext) {  // Changes extension of executable file (i.e. on Linux it probably has no extension, on Windows, in most cases - .exe)
+#ifdef FREEARC_WIN
+                                           char *p = strrchr(utf8lastname, '.');
+                                           if (p)  *p='\0';
+#endif
+                                           strcat  (utf8lastname, ".");
+                                           strcat  (utf8lastname, ext);
+                                           setname (utf8lastname);}
+
   MYFILE ()                               {init();}
   MYFILE (FILENAME filename)              {init(); setname (filename);}
   MYFILE (MYFILE &base, FILENAME filename){init(); setname (base, filename);}
@@ -721,6 +813,11 @@ struct MYFILE
   virtual bool exists ()                  {return file_exists(filename);}
   virtual bool rename (MYFILE &other)     {return rename_file(filename, other.filename);}
   virtual int  remove ()                  {return remove_file(filename);}
+#ifdef FREEARC_WIN
+  virtual int  remove_readonly_attrib ()  {return SetFileAttributes (filename, GetFileAttributes(filename) & ~FILE_ATTRIBUTE_READONLY & ~FILE_ATTRIBUTE_SYSTEM);}
+#else
+  virtual int  remove_readonly_attrib ()  {/*struct stat buf; if (0==stat(filename, &buf))  chmod(filename, buf.st_mode & ~S_IWUSR & ~S_IWGRP & ~S_IWOTH);*/  return 0;}
+#endif
 
   bool tryOpen (MODE mode)    // Пытается открыть файл для чтения или записи
   {

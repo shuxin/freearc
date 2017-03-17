@@ -60,8 +60,8 @@ bool DLLUI::event (char *_what, Number _n1, Number _n2, char *_str)
   str  = _str;
 
   DoEvent.Signal();
-  EventDone.Lock();
-  return result>=0;
+  EventDone.Wait();
+  return result>=FREEARC_OK;
 }
 
 void DLLUI::BeginProgress (uint64 totalBytes)
@@ -109,7 +109,7 @@ void DLLUI::Abort (COMMAND *cmd, int errcode)
 /******************************************************************************
 ** Реализация функционала DLL *************************************************
 ******************************************************************************/
-static DWORD WINAPI timer_thread (void *paramPtr)
+static THREAD_FUNC_RET_TYPE THREAD_FUNC_CALL_TYPE timer_thread (void *paramPtr)
 {
   DLLUI *ui = (DLLUI*) paramPtr;
   for(;;)
@@ -119,7 +119,7 @@ static DWORD WINAPI timer_thread (void *paramPtr)
   }
 }
 
-static DWORD WINAPI decompress_thread (void *paramPtr)
+static THREAD_FUNC_RET_TYPE THREAD_FUNC_CALL_TYPE decompress_thread (void *paramPtr)
 {
   uint64 total_files, origsize, compsize;
   DLLUI *ui = (DLLUI*) paramPtr;
@@ -162,17 +162,17 @@ int __cdecl FreeArcExtract (cbtype *callback, ...)
   COMMAND command (argc, argv);    // Распарсить команду
   if (command.ok) {                // Если парсинг был удачен и можно выполнить команду
     command.Prepare();
-    CThread thread;
+    Thread thread;
     DLLUI *ui = new DLLUI(&command);
     thread.Create (timer_thread,      ui);   //   Спец. тред, вызывающий callback 100 раз в секунду
     thread.Create (decompress_thread, ui);   //   Выполнить разобранную команду
 
     for(;;)
     {
-      ui->DoEvent.Lock();
+      ui->DoEvent.Wait();
       if (strequ (ui->what, "quit"))
         return ui->n1;  // error code of command
-      ui->result = callback (ui->what, ui->n1, ui->n2, ui->str);
+      ui->result = callback? callback (ui->what, ui->n1, ui->n2, ui->str) : FREEARC_OK;
       ui->EventDone.Signal();
     }
     thread.Wait();

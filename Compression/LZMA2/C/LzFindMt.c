@@ -1,5 +1,9 @@
 /* LzFindMt.c -- multithreaded Match finder for LZ algorithms
-2009-05-26 : Igor Pavlov : Public domain */
+(c) 2009-05-26 Igor Pavlov
+(c) 2008-2009 Bulat Ziganshin
+This code made available under GPL license.
+For a commercial license write to Bulat.Ziganshin@gmail.com
+*/
 
 #include "LzHash.h"
 
@@ -165,9 +169,10 @@ static void GetHeadsHt4(const Byte *p, UInt32 pos, UInt32 *hash, UInt32 hashMask
   }
 }
 
-
+// Тред, сканирующий входной блок, и запоминающий в heads[] значение хеш-функции для каждой позиции
 void HashThreadFunc(CMatchFinderMt *mt)
 {
+  BeginCompressionThreadPriority();  // уменьшим приоритет для треда сжатия (функция из Common.cpp)
   CMtSync *p = &mt->hashSync;
   for (;;)
   {
@@ -462,6 +467,7 @@ void BtFillBlock(CMatchFinderMt *p, UInt32 globalBlockIndex)
 
 void BtThreadFunc(CMatchFinderMt *mt)
 {
+  BeginCompressionThreadPriority();  // уменьшим приоритет для треда сжатия (функция из Common.cpp)
   CMtSync *p = &mt->btSync;
   for (;;)
   {

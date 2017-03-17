@@ -27,7 +27,7 @@ public:
   virtual int compress   (CALLBACK_FUNC *callback, void *auxdata);
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_TORNADO)
-  virtual void ShowCompressionMethod (char *buf);
+  virtual void ShowCompressionMethod (char *buf, bool purify);
 
   // Получить/установить объём памяти, используемой при упаковке/распаковке, размер словаря или размер блока
   virtual MemSize GetCompressionMem     (void)         {return m.hashsize + m.buffer + tornado_compressor_outbuf_size(m.buffer);}
@@ -38,7 +38,7 @@ public:
   virtual void    SetDictionary         (MemSize dict);
   virtual void    SetBlockSize          (MemSize bs)   {}
 #endif
-  virtual MemSize GetDecompressionMem   (void)         {return m.buffer;}
+  virtual MemSize GetDecompressionMem   (void)         {return m.buffer + tornado_decompressor_outbuf_size(m.buffer);}
 };
 
 // Разборщик строки метода сжатия TORNADO

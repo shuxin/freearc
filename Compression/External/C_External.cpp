@@ -11,9 +11,9 @@ int external_program (bool IsCompressing, CALLBACK_FUNC *callback, void *auxdata
     MYFILE outfile(t, outfile_basename);  outfile.mark_as_temporary();
 
     BYTE* Buf = (BYTE*) malloc_msg(LARGE_BUFFER_SIZE);    // буфер, используемый для чтения/записи данных
-    int x;                                            // код, возвращённый последней операцией чтения/записи
-    int ExitCode = 0;                                 // код возврата внешней программы
-    bool useHeader = !strequ(method,"tempfile");      // TRUE, если в начало сжатого потока записывается 0/1 - данные несжаты/сжаты
+    int x;                                                // код, возвращённый последней операцией чтения/записи
+    int ExitCode = 0;                                     // код возврата внешней программы
+    bool useHeader = !strequ(method,"tempfile");          // TRUE, если в начало сжатого потока записывается 0/1 - данные несжаты/сжаты
 
     // Перепишем входные данные во временный файл
     infile.remove();
@@ -167,7 +167,7 @@ int EXTERNAL_METHOD::compress (CALLBACK_FUNC *callback, void *auxdata)
 }
 
 // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_EXTERNAL)
-void EXTERNAL_METHOD::ShowCompressionMethod (char *buf)
+void EXTERNAL_METHOD::ShowCompressionMethod (char *buf, bool purify)
 {
     if (strequ (name, "pmm")) {
         char MemStr[100];

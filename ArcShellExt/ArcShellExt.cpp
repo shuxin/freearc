@@ -56,10 +56,14 @@ typedef struct{
 } DOREGSTRUCT, *LPDOREGSTRUCT;
 
 #ifdef ISS_JOINER
-#define szShellExtensionTitle _T("IssJoiner")
+#define ProductName "IssJoiner"
+#elif 0
+#define ProductName "Hamster"
 #else
-#define szShellExtensionTitle _T("FreeArc")
+#define ProductName "FreeArc"
 #endif
+
+#define szShellExtensionTitle _T(ProductName)
 
 BOOL RegisterServer(CLSID, LPTSTR);
 BOOL UnregisterServer(CLSID, LPTSTR);
@@ -469,26 +473,62 @@ STDMETHODIMP CShellExt::Initialize(LPCITEMIDLIST pIDFolder, LPDATAOBJECT pDataOb
 // Worker code
 //---------------------------------------------------------------------------
 
+// Read file contents and append '\0'
+static char* read_string_from_file (TCHAR *filename) {
+  // Open file
+  int f = _wopen (filename, _O_TEXT | _O_RDONLY);
+  if (f<0)
+    return NULL;
+
+  // Alloc buffer
+  int size  = _filelength(f);
+  char *buf = (char*) malloc(size+1);
+  if (!buf)
+    return NULL;
+
+  int len = _read (f, buf, size);
+  _close(f);
+  if (len<0)
+    return NULL;
+
+  buf[len] = 0;
+
+  // Return the data read
+  return buf;
+}
+
+// Loads either user-local or global version of given script
+static void load_lua_script (lua_State *L, TCHAR *scriptFilename) {
+  char  *script;
+  TCHAR *fullname = (TCHAR*) malloc (sizeof(TCHAR) * MY_FILENAME_MAX);
+
+  if (S_OK == SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0 /*SHGFP_TYPE_CURRENT*/, fullname))
+  {
+    _tcscat (fullname, _T("\\") szShellExtensionTitle _T("\\ArcShellExt\\"));
+    _tcscat (fullname, scriptFilename);
+
+    script = read_string_from_file(fullname);
+    if (script != NULL)
+      goto executeScript;
+  }
+
+  GetModuleFileName(_hModule, fullname, MY_FILENAME_MAX);
+  _tcscpy (_tcsrchr(fullname, _T('\\')) + 1, scriptFilename);
+
+  script = read_string_from_file(fullname);
+
+executeScript:
+  if (script != NULL)
+    luaL_dostring (L, memcmp(script,"\xEF\xBB\xBF",3)==0? script+3 : script);  // skip UTF-8 BOM
+
+  free(script);
+  free(fullname);
+}
+
 void CShellExt::load_user_funcs() {
-  TCHAR *szModuleFullNameW = (TCHAR*) malloc (sizeof(TCHAR) * MY_FILENAME_MAX);;
-  char  *szModuleFullName  = ( char*) malloc (            4 * MY_FILENAME_MAX);  ;
-
-  GetModuleFileName(_hModule, szModuleFullNameW, MAX_PATH);
-  WideCharToMultiByte (CP_UTF8, 0, szModuleFullNameW, -1, szModuleFullName, MY_FILENAME_MAX, NULL, NULL);
-
-  char *filename = strrchr(szModuleFullName, '\\') + 1;
-
-  strcpy (filename, "ArcShellExt-system.lua");
-  luaL_dofile (L, szModuleFullName);                           //unicode!
-
-  strcpy (filename, "ArcShellExt-config.lua");
-  luaL_dofile (L, szModuleFullName);                           //unicode!
-
-  strcpy (filename, "ArcShellExt-user.lua");
-  luaL_dofile (L, szModuleFullName);                           //unicode!
-
-  free(szModuleFullName);
-  free(szModuleFullNameW);
+  load_lua_script (L, _T("ArcShellExt-system.lua"));
+  load_lua_script (L, _T("ArcShellExt-config.lua"));
+  load_lua_script (L, _T("ArcShellExt-user.lua"));
 }
 
 int CShellExt::add_menu_item() {
@@ -565,11 +605,9 @@ STDMETHODIMP CShellExt::QueryContextMenu(HMENU _hMenu, UINT _nIndex, UINT _idCmd
 
     if (numFiles)
     {
-      // Call build_menu, passing list of files selected
-      lua_getglobal (L, "build_menu");
-
-      if (!lua_checkstack (L, numFiles))
-        return 0;////error
+      // Call build_menu, passing array of files selected
+      lua_getglobal   (L, "build_menu");
+      lua_createtable (L, numFiles, 0);
 
       // Push UTF8 names of files selected to the Lua stack and save them to filenames[]
       TCHAR *WSelectedFilename = (TCHAR*) malloc (sizeof(TCHAR) * MY_FILENAME_MAX);
@@ -578,7 +616,11 @@ STDMETHODIMP CShellExt::QueryContextMenu(HMENU _hMenu, UINT _nIndex, UINT _idCmd
       {
         DragQueryFile ((HDROP)m_stgMedium.hGlobal, i, WSelectedFilename, MY_FILENAME_MAX);
         WideCharToMultiByte (CP_UTF8, 0, WSelectedFilename, -1, SelectedFilename, MY_FILENAME_MAX, NULL, NULL);
+
+        // table[i+1] := SelectedFilename
         lua_pushstring (L, SelectedFilename);
+        lua_rawseti(L, -2, i+1);
+
         total_size += strlen(strrchr(SelectedFilename,'\\'));
       }
 
@@ -593,7 +635,7 @@ STDMETHODIMP CShellExt::QueryContextMenu(HMENU _hMenu, UINT _nIndex, UINT _idCmd
         p = strchr(p, '\0');
       }
 
-      if (lua_pcall(L, numFiles, 0, 0) != 0)
+      if (lua_pcall(L, 1, 0, 0) != 0)
         return 0;////error
         ;//error(L, "error running function `f': %s",
          //        lua_tostring(L, -1));

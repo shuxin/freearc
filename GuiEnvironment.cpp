@@ -85,7 +85,7 @@ int BrowseForFile(TCHAR *prompt, TCHAR *filters, TCHAR *in_filename, TCHAR *out_
 // Превратить время/дату файла в строку в соответствии с настройками locale или заданными форматами времени и даты
 void GuiFormatDateTime (time_t t, char *buf, int bufsize, char *date_format, char *time_format)
 {
-  if (t==-1)  t=0;  // Иначе получим вылет :(
+  if (t<0)  t=INT_MAX;  // Иначе получаем вылет :(
 
   FILETIME ft1, ft2;
   UnixTimeToFileTime (t, &ft1);

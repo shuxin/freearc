@@ -638,7 +638,7 @@ void GRZIP_METHOD::SetBlockSize (MemSize bs)
 }
 
 // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_GRZIP)
-void GRZIP_METHOD::ShowCompressionMethod (char *buf)
+void GRZIP_METHOD::ShowCompressionMethod (char *buf, bool purify)
 {
   char LZP_Str[100], BlockSizeStr[100];
   sprintf (LZP_Str, "l%d:h%d", MinMatchLen, HashSizeLog);

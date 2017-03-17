@@ -2,8 +2,8 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "FreeArc PowerPack"
-#define MyAppVersion "0.60RC"
-#define MyAppVerName "FreeArc 0.60 RC PowerPack"
+#define MyAppVersion "0.666"
+#define MyAppVerName "FreeArc 0.666 PowerPack"
 #define MyAppPublisher "Bulat Ziganshin"
 #define MyAppURL "http://www.freearc.org"
 

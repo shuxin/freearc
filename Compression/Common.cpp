@@ -2,9 +2,6 @@
 #include "Common.h"
 #include "Compression.h"
 
-// Used in 4x4 only: read entire input buffer before compression begins, allocate output buffer large enough to hold entire compressed output
-int compress_all_at_once = 0;
-
 // Для обработки ошибок во вложенных процедурах - longjmp сигнализирует процедуре верхнего уровня о произошедшей ошибке
 int jmpready = FALSE;
 jmp_buf jumper;
@@ -144,6 +141,18 @@ int split (char *str, char splitter, char **result_base, int result_size)
   return result-result_base;
 }
 
+// Объединить NULL-terminated массив строк src в строку result, ставя между строками разделитель splitter
+void join (char **src, char splitter, char *result, int result_size)
+{
+  char *dst = result;  *dst = '\0';
+  while (*src && result+result_size-dst-1 > 0)
+  {
+    if (dst > result)  *dst++ = splitter;
+    strncopy(dst, *src++, result+result_size-dst);
+    dst = strchr(dst,'\0');
+  }
+}
+
 // Заменяет в строке original все вхождения from на to,
 // возвращая вновь выделенную new строку и освобождая оригинал, если была хоть одна замена
 char *subst (char *original, char *from, char *to)
@@ -205,8 +214,8 @@ MemSize parseMem (char *param, int *error)
 {
   MemSize n=0;
   char c = *param=='='? *++param : *param;
-  if (c=='\0') *error=1;
-  while (c>='0' && c<='9')  n=n*10+c-'0', c=*++param;
+  if (! (c>='0' && c<='9'))  {*error=1; return 0;}
+  while (c>='0' && c<='9')   n=n*10+c-'0', c=*++param;
   switch (c)
   {
     case 'b':  return n;
@@ -276,7 +285,7 @@ char *utf16_to_utf8 (const WCHAR *utf16, char *_utf8)
 // Converts UTF-8 string to OEM
 char *utf8_to_oem (const char *utf8, char *oem)
 {
-  WCHAR *utf16 = (WCHAR*) malloc(MY_FILENAME_MAX*4);
+  WCHAR *utf16 = (WCHAR*) malloc_msg(MY_FILENAME_MAX*4);
   utf8_to_utf16 (utf8, utf16);
   CharToOemW (utf16, oem);
   free (utf16);
@@ -286,7 +295,7 @@ char *utf8_to_oem (const char *utf8, char *oem)
 // Converts OEM string to UTF-8
 char *oem_to_utf8 (const char  *oem, char *utf8)
 {
-  WCHAR *utf16 = (WCHAR*) malloc(MY_FILENAME_MAX*4);
+  WCHAR *utf16 = (WCHAR*) malloc_msg(MY_FILENAME_MAX*4);
   OemToCharW (oem, utf16);
   utf16_to_utf8 (utf16, utf8);
   free (utf16);
@@ -338,14 +347,29 @@ CFILENAME GetTempDir (void)
 #ifdef FREEARC_WIN
 #include <sys/utime.h>
 
-void SetFileDateTime (const CFILENAME Filename, time_t mtime)
+void SetFileDateTime (const CFILENAME Filename, time_t t)
 {
-  struct _stat st;
-    _tstat (Filename, &st);
-  struct _utimbuf times;
-    times.actime  = st.st_atime;
-    times.modtime = mtime;
-  _tutime (Filename, &times);
+  if (t<0)  t=INT_MAX;  // Иначе получаем вылет :(
+  struct tm* t2 = gmtime(&t);
+
+  SYSTEMTIME t3;
+  t3.wYear         = t2->tm_year+1900;
+  t3.wMonth        = t2->tm_mon+1;
+  t3.wDay          = t2->tm_mday;
+  t3.wHour         = t2->tm_hour;
+  t3.wMinute       = t2->tm_min;
+  t3.wSecond       = t2->tm_sec;
+  t3.wMilliseconds = 0;
+
+  FILETIME ft;
+  SystemTimeToFileTime(&t3, &ft);
+
+  HANDLE hndl = CreateFileW(Filename, FILE_WRITE_ATTRIBUTES,
+                            FILE_SHARE_READ|FILE_SHARE_WRITE, NULL,
+                            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+  SetFileTime(hndl,NULL,NULL,&ft);  //creation, last access, modification times
+  CloseHandle(hndl);
+  //SetFileAttributes (Filename, attrib);
 }
 
 // Execute program `filename` in the directory `curdir` optionally waiting until it finished
@@ -358,11 +382,13 @@ void RunProgram (const CFILENAME filename, const CFILENAME curdir, int wait_fini
   ZeroMemory (&pi, sizeof(pi));
   BOOL process_created = CreateProcessW (filename, NULL, NULL, NULL, FALSE, 0, NULL, curdir, &si, &pi);
 
-  if (process_created && wait_finish)
+  if (process_created)
+  {
+    if (wait_finish)
       WaitForSingleObject (pi.hProcess, INFINITE);
-
-  CloseHandle (pi.hProcess);
-  CloseHandle (pi.hThread);
+    CloseHandle (pi.hProcess);
+    CloseHandle (pi.hThread);
+  }
 }
 
 // Execute `command` in the directory `curdir` optionally waiting until it finished
@@ -379,7 +405,7 @@ int RunCommand (const CFILENAME command, const CFILENAME curdir, int wait_finish
   if (process_created)
   {
     if (wait_finish)
-      WaitForSingleObject (pi.hProcess, INFINITE);
+      WaitForSingleObject (pi.hProcess, INFINITE),
       GetExitCodeProcess  (pi.hProcess, &ExitCode);
     CloseHandle (pi.hProcess);
     CloseHandle (pi.hThread);
@@ -399,34 +425,57 @@ void RunFile (const CFILENAME filename, const CFILENAME curdir, int wait_finish)
   sei.lpDirectory = curdir;
   sei.nShow = SW_SHOW;
 
+  CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
   DWORD rc = ShellExecuteEx(&sei);
   if (rc && wait_finish)
     WaitForSingleObject(sei.hProcess, INFINITE),
     CloseHandle (sei.hProcess);
 }
 
+// Установить приоритет треда какой полагается для тредов сжатия (распаковки, шифрования...)
+int BeginCompressionThreadPriority (void)
+{
+   DWORD dwThreadPriority = GetThreadPriority(GetCurrentThread());
+   SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+   return dwThreadPriority;
+}
+
+// Восстановить приоритет треда таким, как мы его запомнили
+void EndCompressionThreadPriority (int old_priority)
+{
+   SetThreadPriority(GetCurrentThread(), old_priority);
+}
+
+
 #else // For Unix:
 
-void SetFileDateTime(const CFILENAME Filename, time_t mtime)
+#include <sys/resource.h>
+
+void SetFileDateTime(const CFILENAME Filename, time_t t)
 {
+  if (t<0)  t=INT_MAX;  // Иначе получаем вылет :(
 #undef stat
   struct stat st;
     stat (Filename, &st);
   struct utimbuf times;
     times.actime  = st.st_atime;
-    times.modtime = mtime;
+    times.modtime = t;
   utime (Filename, &times);
 }
 
 // Execute `command` in the directory `curdir` optionally waiting until it finished
-int RunCommand (const CFILENAME command, const CFILENAME curdir, int wait_finish)
+int RunCommand (CFILENAME command, CFILENAME curdir, int wait_finish)
 {
   char *olddir = (char*) malloc_msg (),
        *cmd    = (char*) malloc_msg (strlen(command)+10);
   getcwd(olddir, MY_FILENAME_MAX);
 
   chdir(curdir);
-  sprintf(cmd, "./%s%s", command, wait_finish? "" : " &");
+  const char *prefix = (memcmp(command,"/"  ,1) == 0)?    "" :
+                       (memcmp(command,"\"/",2) == 0)?    "" :
+                       (memcmp(command,"\"" ,1) == 0)?    (command++, "\"./") :
+                                                          "./";
+  sprintf(cmd, "%s%s%s", prefix, command, wait_finish? "" : " &");
   int ExitCode = system(cmd);
 
   chdir(olddir);
@@ -439,6 +488,20 @@ int RunCommand (const CFILENAME command, const CFILENAME curdir, int wait_finish
 void RunFile (const CFILENAME filename, const CFILENAME curdir, int wait_finish)
 {
   RunCommand (filename, curdir, wait_finish);
+}
+
+// Установить приоритет треда какой полагается для тредов сжатия (распаковки, шифрования...)
+int BeginCompressionThreadPriority (void)
+{
+  int old = getpriority(PRIO_PROCESS, 0);
+  //setpriority(PRIO_PROCESS, 0, old+1);        закомментировано из-за проблем с восстановлением старого приоритета :(
+  return old;
+}
+
+// Восстановить приоритет треда таким, как мы его запомнили
+void EndCompressionThreadPriority (int old_priority)
+{
+  //setpriority(PRIO_PROCESS, 0, old_priority);
 }
 
 #endif // Windows/Unix
@@ -537,7 +600,8 @@ void EnvResetConsoleTitle (void)
 
 void EnvSetConsoleTitle (char *title)
 {
-  fprintf (stderr, "\033]0;%s\a", title);
+  //Commented out since 1) we can't restore title on exit and 2) it looks unusual on Linux
+  //  fprintf (stderr, "\033]0;%s\a", title);
 }
 
 void EnvResetConsoleTitle (void)    {};

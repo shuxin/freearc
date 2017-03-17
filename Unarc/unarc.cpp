@@ -99,7 +99,7 @@ int main (int argc, char *argv[])
   COMMAND command (argc, argv);    // Распарсить команду
   if (command.ok)                  // Если парсинг был удачен и можно выполнить команду
     PROCESS (&command, &UI);       //   Выполнить разобранную команду
-  printf ("\n");
+  printf (command.ok? (command.list_cmd()? "" : "All OK\n") : "Error(s) found\n");
   return command.ok? EXIT_SUCCESS : FREEARC_EXIT_ERROR;
 }
 

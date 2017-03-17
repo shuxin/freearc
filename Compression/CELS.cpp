@@ -19,11 +19,11 @@ int COMPRESSION_METHOD::server()
   if (strequ (service, "decompress"))             {parse_method(); return decompress (p._callback("callback"), p);}
 #ifndef FREEARC_DECOMPRESS_ONLY
   if (strequ (service, "compress"))               {parse_method(); return compress   (p._callback("callback"), p);}
-  if (strequ (service, "canonize"))               {parse_method();                                     char a[1000]; ShowCompressionMethod(a); return p._return(a);}
-  if (strequ (service, "SetCompressionMem"))      {parse_method(); SetCompressionMem  (p._int("mem")); char a[1000]; ShowCompressionMethod(a); return p._return(a);}
-  if (strequ (service, "SetDictionary"))          {parse_method(); SetDictionary      (p._int("mem")); char a[1000]; ShowCompressionMethod(a); return p._return(a);}
-  if (strequ (service, "SetBlockSize"))           {parse_method(); SetBlockSize       (p._int("mem")); char a[1000]; ShowCompressionMethod(a); return p._return(a);}
-  if (strequ (service, "SetDecompressionMem"))    {parse_method(); SetDecompressionMem(p._int("mem")); char a[1000]; ShowCompressionMethod(a); return p._return(a);}
+  if (strequ (service, "canonize"))               {parse_method();                                     char a[1000]; ShowCompressionMethod(a,FALSE); return p._return(a);}
+  if (strequ (service, "SetCompressionMem"))      {parse_method(); SetCompressionMem  (p._int("mem")); char a[1000]; ShowCompressionMethod(a,FALSE); return p._return(a);}
+  if (strequ (service, "SetDictionary"))          {parse_method(); SetDictionary      (p._int("mem")); char a[1000]; ShowCompressionMethod(a,FALSE); return p._return(a);}
+  if (strequ (service, "SetBlockSize"))           {parse_method(); SetBlockSize       (p._int("mem")); char a[1000]; ShowCompressionMethod(a,FALSE); return p._return(a);}
+  if (strequ (service, "SetDecompressionMem"))    {parse_method(); SetDecompressionMem(p._int("mem")); char a[1000]; ShowCompressionMethod(a,FALSE); return p._return(a);}
   if (strequ (service, "GetCompressionMem"))      {parse_method(); return p._return (GetCompressionMem());}
   if (strequ (service, "GetDictionary"))          {parse_method(); return p._return (GetDictionary());}
   if (strequ (service, "GetBlockSize"))           {parse_method(); return p._return (GetBlockSize());}
@@ -69,7 +69,7 @@ struct STORING_METHOD : COMPRESSION_METHOD
   }
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия (функция, обратная к parse_method)
-  virtual void ShowCompressionMethod (char *buf)   {sprintf (buf, "storing");}
+  virtual void ShowCompressionMethod (char *buf, bool purify)   {sprintf (buf, "storing");}
 
   // Получить/установить объём памяти, используемой при упаковке/распаковке, размер словаря или размер блока
   virtual MemSize GetCompressionMem   (void)    {return BUFFER_SIZE;}

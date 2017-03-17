@@ -12,10 +12,11 @@ module ArcCreate where
 
 import Prelude hiding (catch)
 import Control.Concurrent
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.IORef
 import Data.List
+import Data.Maybe
 import System.Mem
 import System.IO
 #if defined(FREEARC_UNIX)
@@ -32,8 +33,9 @@ import FileInfo
 import Options
 import UI
 import ArhiveStructure
-import ArhiveDirectory
 import ArhiveFileList
+import Arhive7zLib
+import ArhiveDirectory
 import ArcExtract
 import ArcvProcessRead
 import ArcvProcessExtract
@@ -74,6 +76,8 @@ runArchiveCreate pretestArchive
   -- Выйти, если архив залочен или содержит recovery info и повреждён.
   -- Если мы создаём новый архив, то подставить вместо старого "фантом".
   let abort_on_locked_archive archive footer = do
+          when (isNothing archive) $
+              registerError$ GENERAL_ERROR ["0478 can't modify non-"++aFreeArc++" archive"]
           when (ftLocked footer) $
               registerError$ GENERAL_ERROR ["0310 can't modify archive locked with -k"]
           pretestArchive command archive footer
@@ -134,7 +138,7 @@ runArchiveCreate pretestArchive
   --   Для этого в create_archive_structure_PROCESS передаётся процедура `find_last_time`.
   --   Ей передают по частям список файлов, записываемых в архив, и она отслеживает самый свежий из них.
   --   Этой датой будет проштампован архив после окончания архивации.
-  last_time <- ref aMINIMAL_POSSIBLE_DATETIME
+  last_time <- ref aMINIMUM_POSSIBLE_FILETIME
   let find_last_time dir  =  last_time .= (\time -> maximum$ time : map (fiTime.fwFileInfo) dir)
   let processDir dir      =  do when (opt_time_to_last command) (find_last_time dir)
                                 postProcess_processDir dir  -- враппер постпроцессинга тоже должен получить список успешно сархивированных файлов
@@ -310,8 +314,8 @@ getArcComment arccmt_str arccmt_file input_archives parseFile = do
 
 -- |Записать SFX-модуль в начало создаваемого архива
 writeSFX sfxname archive old_archive = do
-  let oldArchive = arcArchive old_archive
-      oldSFXSize = ftSFXSize (arcFooter old_archive)
+  let Just oldArchive = arcArchive old_archive
+      oldSFXSize      = ftSFXSize (arcFooter old_archive)
   case sfxname of                                      -- В зависимости от значения опции "-sfx":
     "-"      -> return ()                              --   удалить старый sfx-модуль
     "--"     -> unless (arcPhantom old_archive) $ do   --   скопировать sfx из исходного архива (по умолчанию)

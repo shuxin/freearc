@@ -47,7 +47,7 @@ int REP_METHOD::compress (CALLBACK_FUNC *callback, void *auxdata)
 }
 
 // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_REP)
-void REP_METHOD::ShowCompressionMethod (char *buf)
+void REP_METHOD::ShowCompressionMethod (char *buf, bool purify)
 {
   REP_METHOD defaults; char BlockSizeStr[100], MinCompressionStr[100], BarrierTempStr[100], BarrierStr[100], SmallestLenStr[100], HashSizeLogStr[100], AmplifierStr[100], MinMatchLenStr[100];
   showMem (BlockSize, BlockSizeStr);

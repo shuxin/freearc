@@ -2,7 +2,8 @@
 # Install executables and configuration files to appropriate directories #
 ##########################################################################
 
-PREFIX=/usr/local
+PREFIX=/usr
+ALT_PREFIX=/usr/local
 
 # Install with individual configuration for every user
 install: uninstall
@@ -20,6 +21,7 @@ uninstall:
 	sudo rm -rf /etc/arc.languages
 	sudo rm -rf /etc/FreeArc
 	sudo rm -rf $(PREFIX)/lib/FreeArc
+	sudo rm -rf $(ALT_PREFIX)/lib/FreeArc
 	sudo rm -f /etc/arc.groups
 	sudo rm -f /etc/arc.ini
 	sudo rm -f /etc/winarc.history
@@ -31,4 +33,10 @@ uninstall:
 	sudo rm -f $(PREFIX)/bin/winarc
 	sudo rm -f $(PREFIX)/bin/freearc
 	sudo rm -f $(PREFIX)/lib/*arc*.sfx
+	sudo rm -f $(ALT_PREFIX)/bin/arc
+	sudo rm -f $(ALT_PREFIX)/bin/unarc
+	sudo rm -f $(ALT_PREFIX)/bin/winarc
+	sudo rm -f $(ALT_PREFIX)/bin/freearc
+	sudo rm -f $(ALT_PREFIX)/lib/*arc*.sfx
+
 

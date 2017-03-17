@@ -27,7 +27,7 @@ import Compression
 import Options
 import UI               (debugLog0, uiScanning, uiCorrectTotal)
 import ArhiveStructure
-import ArhiveDirectory
+import Arhive7zLib
 
 ----------------------------------------------------------------------------------------------------
 ---- Сортировка списка файлов в соответствии с заданными в команде опциями -------------------------
@@ -181,8 +181,7 @@ join_lists main_archive added_archives added_diskfiles
       added_list  =  (concatMap arcDirectory added_archives)  ++  (map DiskFile added_diskfiles)
 
   -- DEBUGGING ------------------------------------------------------
-  let typ (DiskFile _)             = "Disk: "
-      typ (CompressedFile _ _ _ _) = "Archive: "
+  let typ x    = if isCompressedFile x  then "Disk: "  else "Archive: "
       name  fi = fpFullname(fiStoredName fi)
       names fi = fpFullname(fiDiskName fi)++" "++fpFullname(fiFilteredName fi)++" "++fpFullname(fiStoredName fi)
   --print$ map (names.cfFileInfo) arcdir
@@ -510,8 +509,8 @@ splitFileTypes command  -- Определить типы файлов по arc.groups
         step = (filesize-n*blocksize) `div` n    -- промежутки между проверяемыми блоками (их размер подобран так, чтобы распределить n блоков по blocksize байт равномерно по файлу)
     fmap maybeToList $ whenJustM (check defaultType (i blocksize) (take (i n) [0, blocksize+step ..]) file) $ \dataTypes -> do
     let typ = chooseType dataTypes defaultType
-    --debugLog0$ show$ (fpBasename.fiDiskName.cfFileInfo) file
-    debugLog0$ "  "++(fst$ opt_data_compressor command!!typ)++" "++(fpBasename.fiDiskName.cfFileInfo) file++"("++show n++") "++show dataTypes; myFlushStdout
+    --condPrintLineLn "!"$ show$ (fpBasename.fiDiskName.cfFileInfo) file
+    condPrintLineLn "!"$ "  "++(fst$ opt_data_compressor command!!typ)++" "++(fpBasename.fiDiskName.cfFileInfo) file++"("++show n++") "++show dataTypes; myFlushStdout
     uiScanning msg [file]
     return (typ,[file])
 
@@ -532,8 +531,8 @@ splitFileTypes command  -- Определить типы файлов по arc.groups
     -- Определим типы выбранных файлов и "суммарный" тип (если файл не может быть открыт, то его группа получает тип "default")
     dataTypes <- concatMapM (check defaultType aCHUNK_SIZE [0] .>>== fromMaybe ["default"]) filesToTry
     let typ = chooseType dataTypes defaultType
-    --debugLog0$ show$ map (fpBasename.fiDiskName.cfFileInfo) files
-    debugLog0$ "  "++(if isAll (==) dataTypes  then fst$ opt_data_compressor command!!typ  else "?")++" "++show (map (fpBasename.fiDiskName.cfFileInfo) filesToTry)++" "++show dataTypes; myFlushStdout
+    --condPrintLineLn "!"$ show$ map (fpBasename.fiDiskName.cfFileInfo) files
+    condPrintLineLn "!"$ "  "++(if isAll (==) dataTypes  then fst$ opt_data_compressor command!!typ  else "?")++" "++show (map (fpBasename.fiDiskName.cfFileInfo) filesToTry)++" "++show dataTypes; myFlushStdout
     -- Если типы файлов определились по разному, то дадим каждой подгруппе право на самоопределение
     if not (isAll (==) dataTypes)
       then concatMapM groupType fileGroups
@@ -548,8 +547,7 @@ splitFileTypes command  -- Определить типы файлов по arc.groups
     where typ  =  fst(opt_data_compressor command!!cfType command file)
 
   -- Определить тип данных исходя из результатов проб и типа по arc.groups
-  chooseType dataTypes defaultType =
-         (best `elemIndex` map fst (opt_data_compressor command)) `defaultVal` 0
+  chooseType dataTypes defaultType  =  best.$words.$firstMaybe (`elemIndex` map fst (opt_data_compressor command)) .$fromMaybe 0
     where best = bestType dataTypes .$changeTo [("default", defaultType)]
 
   -- Определить правильный тип данных по нескольким пробам

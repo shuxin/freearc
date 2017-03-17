@@ -14,18 +14,17 @@ mkdir !Release\Documentation
 mkdir !Release\gtk2-runtime
 mkdir !Release\gtk2-themes
 
-xcopy Addons        !Release\Addons           /e
-xcopy 7-zip         !Release\bin              /e
-xcopy bin           !Release\bin           /i
-xcopy bin\scripts   !Release\bin\scripts   /i
-xcopy ini           !Release\ini           /i
-xcopy Documentation !Release\Documentation    /e
-xcopy License       !Release\License       /i
-xcopy gtk2-runtime  !Release\gtk2-runtime     /e
-xcopy gtk2-themes   !Release\gtk2-themes      /e
-xcopy arc.languages\arc.languages  !Release\bin\arc.languages  /e
+xcopy Addons                       !Release\Addons                /e
+xcopy 7-zip                        !Release\bin                   /e
+xcopy bin                          !Release\bin                /i
+xcopy bin\scripts                  !Release\bin\scripts        /i
+xcopy ini                          !Release\ini                /i
+xcopy Documentation                !Release\Documentation         /e
+xcopy License                      !Release\License            /i
+xcopy gtk2-runtime                 !Release\gtk2-runtime          /e
+xcopy gtk2-themes                  !Release\gtk2-themes           /e
+xcopy arc.languages\arc.languages  !Release\bin\arc.languages     /e
 
-xcopy ..\Documentation\History.txt                      !Release\Addons
 xcopy ..\Unarc\FreeArc.fmt                             "!Release\Addons\FAR MultiArc plugin"
 xcopy ..\Unarc\unarc.dll                                !Release\Addons\InnoSetup
 xcopy ..\Unarc\InnoSetup\freearc_example.iss            !Release\Addons\InnoSetup
@@ -39,10 +38,11 @@ xcopy ..\Tests\Arc.exe                                  !Release\bin
 xcopy ..\Tests\FreeArc.exe                              !Release\bin
 xcopy ..\Unarc\unarc.exe                                !Release\bin
 xcopy ..\Unarc\*.sfx                                    !Release\bin
-xcopy ..\Compression\facompress.dll                     !Release\bin
+xcopy ..\Compression\facompress*.dll                    !Release\bin
 xcopy ..\ArcShellExt\all2arc\all2arc.exe                !Release\bin
 xcopy ..\ArcShellExt\*.dll                              !Release\ArcShellExt-dll
 xcopy ..\ArcShellExt\*.lua                              !Release\bin\ArcShellExt
+xcopy ..\ArcShellExt\Register\Manager*.exe              !Release\bin\ArcShellExt
 xcopy release3.cmd                                      !Release
 xcopy *.nsi                                             !Release
 xcopy *.nsh                                             !Release

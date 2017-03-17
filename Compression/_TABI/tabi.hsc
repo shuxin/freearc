@@ -1,4 +1,4 @@
-{-# OPTIONS -fglasgow-exts #-}
+{-# OPTIONS -fglasgow-exts -cpp #-}
 module TABI (
   Value(..),
   FUNCTION,
@@ -14,9 +14,10 @@ module TABI (
 ) where
 
 import Prelude hiding (catch)
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.IORef
+import Data.Int
 import Data.Word
 import Foreign
 import Foreign.C
@@ -25,12 +26,18 @@ import Foreign.C
 #include "tabi.h"
 
 
-
 -- Rules of serialization for values that may be passed via TABI
 class Value a where
   typeOf :: a -> Int32                          -- ^Integer constant that represents this type of values
   pokeValue :: Ptr () -> a -> IO (IO ())        -- ^Write value to given memory address and return action that will free memory buffers allocated for this value
   peekValue :: Int32 -> Ptr () -> IO (Maybe a)  -- ^Read value from given memory address if its type allows conversion to type `a`
+
+
+instance Value Bool where
+  typeOf _ = #{const TABI_BOOL}
+  pokeValue ptr a  =  poke (castPtr ptr :: Ptr Int32) (fromIntegral$ fromEnum a) >> return doNothing
+  peekValue t ptr | t == #{const TABI_BOOL}  =  peek (castPtr ptr :: Ptr Int32) >>= return.Just .toEnum.fromIntegral
+                  | otherwise                =  return Nothing
 
 instance Value Int where
   typeOf _ = #{const TABI_INTEGER}
@@ -49,6 +56,31 @@ instance Value CUInt where
   pokeValue ptr a  =  poke (castPtr ptr :: Ptr Int64) (fromIntegral a) >> return doNothing
   peekValue t ptr | t == #{const TABI_INTEGER}  =  peek (castPtr ptr :: Ptr Int64) >>= return.Just .fromIntegral
                   | otherwise                   =  return Nothing
+
+instance Value Int32 where
+  typeOf _ = #{const TABI_INTEGER}
+  pokeValue ptr a  =  poke (castPtr ptr :: Ptr Int64) (fromIntegral a) >> return doNothing
+  peekValue t ptr | t == #{const TABI_INTEGER}  =  peek (castPtr ptr :: Ptr Int64) >>= return.Just .fromIntegral
+                  | otherwise                   =  return Nothing
+
+instance Value Word32 where
+  typeOf _ = #{const TABI_INTEGER}
+  pokeValue ptr a  =  poke (castPtr ptr :: Ptr Int64) (fromIntegral a) >> return doNothing
+  peekValue t ptr | t == #{const TABI_INTEGER}  =  peek (castPtr ptr :: Ptr Int64) >>= return.Just .fromIntegral
+                  | otherwise                   =  return Nothing
+
+instance Value Int64 where
+  typeOf _ = #{const TABI_INTEGER}
+  pokeValue ptr a  =  poke (castPtr ptr :: Ptr Int64) (fromIntegral a) >> return doNothing
+  peekValue t ptr | t == #{const TABI_INTEGER}  =  peek (castPtr ptr :: Ptr Int64) >>= return.Just .fromIntegral
+                  | otherwise                   =  return Nothing
+
+instance Value Word64 where
+  typeOf _ = #{const TABI_INTEGER}
+  pokeValue ptr a  =  poke (castPtr ptr :: Ptr Int64) (fromIntegral a) >> return doNothing
+  peekValue t ptr | t == #{const TABI_INTEGER}  =  peek (castPtr ptr :: Ptr Int64) >>= return.Just .fromIntegral
+                  | otherwise                   =  return Nothing
+
 
 instance Value Double where
   typeOf _ = #{const TABI_FLOATING}
@@ -159,7 +191,7 @@ required params name        =  parameter params name (raise ("required parameter
 -- |Unmarshall optional parameter with default value deflt
 optional params name deflt  =  parameter params name (return deflt)
 
--- |Unmarshall parameter from table executing default_action when it not found
+-- |Unmarshall parameter from table executing default_action when it's not found
 parameter params name default_action = do
   ptr <- find params name
   if ptr==nullPtr then default_action else do

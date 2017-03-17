@@ -28,7 +28,7 @@ public:
   virtual int compress   (CALLBACK_FUNC *callback, void *auxdata);
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_DICT)
-  virtual void ShowCompressionMethod (char *buf);
+  virtual void ShowCompressionMethod (char *buf, bool purify);
 
   // Получить/установить объём памяти, используемой при упаковке/распаковке, размер словаря или размер блока
   virtual MemSize GetCompressionMem     (void)         {return BlockSize*2;}
@@ -39,7 +39,7 @@ public:
   virtual void    SetDictionary         (MemSize dict) {if (dict>0)  BlockSize = dict;}
   virtual void    SetBlockSize          (MemSize bs)   {if (bs>0)    BlockSize = bs;}
 #endif
-  virtual MemSize GetDecompressionMem   (void)         {return 1*mb /*BlockSize*2*/;}
+  virtual MemSize GetDecompressionMem   (void)         {return BlockSize*2;}
 };
 
 // Разборщик строки препроцессора DICT

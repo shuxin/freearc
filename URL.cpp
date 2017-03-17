@@ -60,14 +60,16 @@ void url_setup_proxy (char *_proxy)
     hInternet && InternetCloseHandle (hInternet),  hInternet=NULL;
 }
 
+
 void url_setup_bypass_list (char *_bypass_list)
 {
     bypass_list = _bypass_list[0]? strdup_msg (_bypass_list) : (char*)"<local>";
     hInternet && InternetCloseHandle (hInternet),  hInternet=NULL;
 }
 
+
 // Open file with given url and return handle for operations on the file
-URL *url_open (char *_url)
+URL *url_init (char *_url)
 {
     URL *url = (URL*) malloc(sizeof(URL));
     if (!url)  return NULL;
@@ -79,7 +81,7 @@ URL *url_open (char *_url)
     // инициализируем WinInet
     hInternet = hInternet? hInternet :
            InternetOpenA(
-             "FreeArc/0.52",
+             "FreeArc/0.666",
              proxy? INTERNET_OPEN_TYPE_PROXY : INTERNET_OPEN_TYPE_PRECONFIG,
              proxy, bypass_list,
              0);
@@ -121,11 +123,9 @@ URL *url_open (char *_url)
         if (!url->hConnect)   {url_close(url); return NULL;}
     }
 
-    url->size = url_detect_size (url);
-    if (url->size < 0)   {url_close(url); return NULL;}
-
     return url;
 }
+
 
 //  4.1Gb - http://download.opensuse.org/distribution/10.3/iso/dvd/openSUSE-10.3-GM-DVD-i386.iso
 //  4.1Gb - ftp://ftp.linuxcenter.ru/iso/Linuxcenter-games-collection-v2-dvd/lc-games-dvd.iso
@@ -195,11 +195,36 @@ int64 url_detect_size (URL *url)
         InternetCloseHandle (hURL);
 
         DataSize[dwLengthDataSize] = '\0';
-        return bQuery1&&bQuery2&&dwStatusCode==HTTP_STATUS_OK? atoll(DataSize): -1;
+        return bQuery1&&dwStatusCode==HTTP_STATUS_OK? (bQuery2? atoll(DataSize) : -2) : -1;
     }
 
     return -1;
 }
+
+
+// Check existence of given url
+int url_exists (char *_url)
+{
+    URL *url = url_init(_url);
+
+    int size = url_detect_size (url);
+    url_close(url);
+
+    return size>=0 || size==-2;
+}
+
+
+// Open file with given url, fill url->size and return handle for operations on the file
+URL *url_open (char *_url)
+{
+    URL *url = url_init(_url);
+
+    url->size = url_detect_size (url);
+    if (url->size < 0)   {url_close(url); return NULL;}
+
+    return url;
+}
+
 
 int url_readp (URL *url, int64 offset, char *buf, int size)
 {
@@ -265,6 +290,7 @@ int url_readp (URL *url, int64 offset, char *buf, int size)
     return bytes;
 }
 
+
 void url_close (URL *url)
 {
     if (!url) return;
@@ -319,7 +345,7 @@ URL* url_open (char *_url)
 
     /* some servers don't like requests that are made without a user-agent
        field, so we provide one */
-    curl_easy_setopt (url->curl_handle, CURLOPT_USERAGENT, "FreeArc/0.60RC");
+    curl_easy_setopt (url->curl_handle, CURLOPT_USERAGENT, "FreeArc/0.666");
 
     /* specify URL to get */
     curl_easy_setopt (url->curl_handle, CURLOPT_URL, url->url);
@@ -331,7 +357,7 @@ URL* url_open (char *_url)
 
     long response;
     curl_easy_getinfo (url->curl_handle, CURLINFO_RESPONSE_CODE, &response);
-    if (response!=200)   {url_close(url); return NULL;}
+    if (response!=200 && response!=301 && response!=302)   {url_close(url); return NULL;}
 
     double size;
     res = curl_easy_getinfo (url->curl_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &size);
@@ -342,6 +368,14 @@ URL* url_open (char *_url)
     curl_easy_setopt (url->curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
 
     return url;
+}
+
+// Check existence of given url
+int url_exists (char *_url)
+{
+    URL *url = url_open(_url);
+    url_close(url);
+    return url!=NULL;
 }
 
 int url_readp (URL *url, int64 offset, char *buf, int size)

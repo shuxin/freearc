@@ -1,5 +1,9 @@
 /* LzmaEnc.c -- LZMA Encoder
-2009-04-22 : Igor Pavlov : Public domain */
+(c) 2009-04-22 Igor Pavlov
+(c) 2008-2009 Bulat Ziganshin
+This code made available under GPL license.
+For a commercial license write to Bulat.Ziganshin@gmail.com
+*/
 
 #include <string.h>
 
@@ -56,6 +60,7 @@ void LzmaEncProps_Normalize(CLzmaEncProps *p)
   if (level < 0) level = 5;
   p->level = level;
   if (p->dictSize == 0) p->dictSize = (level <= 5 ? (1 << (level * 2 + 14)) : (level == 6 ? (1 << 25) : (1 << 26)));
+  p->dictSize = mymin (p->dictSize, kMaxValForNormalize-kNormalizeStepMin-1*mb+1);   // Bulat: dict>959m doesn't work for some reason
   if (p->lc < 0) p->lc = 3;
   if (p->lp < 0) p->lp = 0;
   if (p->pb < 0) p->pb = 2;
@@ -414,9 +419,6 @@ SRes LzmaEnc_SetProps(CLzmaEncHandle pp, const CLzmaEncProps *props2)
   if (props.lc > LZMA_LC_MAX || props.lp > LZMA_LP_MAX || props.pb > LZMA_PB_MAX ||
       props.dictSize > (1 << kDicLogSizeMaxCompress) || props.dictSize > (1 << 30))
     return SZ_ERROR_PARAM;
-  // Bulat: dict>959m doesn't work for some reason
-  if (props.dictSize > (kMaxValForNormalize-kNormalizeStepMin-1*mb+1))
-    return SZ_ERROR_PARAM;
 
   p->dictSize = props.dictSize;
   p->hashSize = props.hashSize;
@@ -483,15 +485,16 @@ static void RangeEnc_Construct(CRangeEnc *p)
 
 #define RangeEnc_GetProcessed(p) ((p)->processed + ((p)->buf - (p)->bufBase) + (p)->cacheSize)
 
-#define RC_BUF_SIZE (1 << 16)
-static int RangeEnc_Alloc(CRangeEnc *p, ISzAlloc *alloc)
+#define RC_BUF_SIZE(dict) (compress_all_at_once? (dict)+((dict)/8) : BUFFER_SIZE)  /* output buffer size */
+
+static int RangeEnc_Alloc(CRangeEnc *p, UInt32 dictSize, ISzAlloc *alloc)
 {
   if (p->bufBase == 0)
   {
-    p->bufBase = (Byte *)alloc->Alloc(alloc, RC_BUF_SIZE);
+    p->bufBase = (Byte *)alloc->Alloc(alloc, RC_BUF_SIZE(dictSize));
     if (p->bufBase == 0)
       return 0;
-    p->bufLim = p->bufBase + RC_BUF_SIZE;
+    p->bufLim = p->bufBase + RC_BUF_SIZE(dictSize);
   }
   return 1;
 }
@@ -1927,7 +1930,7 @@ static SRes LzmaEnc_Alloc(CLzmaEnc *p, UInt32 keepWindowSize, ISzAlloc *alloc, I
 {
   UInt32 beforeSize = kNumOpts;
   Bool btMode;
-  if (!RangeEnc_Alloc(&p->rc, alloc))
+  if (!RangeEnc_Alloc(&p->rc, p->dictSize, alloc))
     return SZ_ERROR_MEM;
   btMode = p->matchFinderBase.btMode;
   #ifdef COMPRESS_MF_MT

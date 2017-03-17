@@ -21,6 +21,7 @@ import Encryption
 import Options           (opt_data_password, opt_headers_password, opt_encryption_algorithm, limit_compression)
 import UI
 import ArhiveStructure
+import Arhive7zLib
 import ArhiveDirectory
 import ArcvProcessExtract
 import ArcvProcessRead
@@ -31,15 +32,14 @@ import ArcvProcessRead
 compress_AND_write_to_archive_PROCESS archive command backdoor pipe = do
 
   -- Процедура отображения в UI входных данных
-  let display (FileStart fi)               =  uiStartFile      fi
-      display (DataChunk buf len)          =  uiUnpackedBytes  (i len)
+  let display (FileStart fi)               =  uiStartFile      "" (Right fi)
+      display (DataChunk buf len)          =  return ()
       display (CorrectTotals files bytes)  =  uiCorrectTotal   files bytes
       display (FakeFiles cfiles)           =  uiFakeFiles      (map cfFileInfo cfiles) 0
       display _                            =  return ()
 
   -- Процедура записи упакованных данных в архив
-  let write_to_archive (DataBuf buf len) =  do uiCompressedBytes  (i len)
-                                               archiveWriteBuf    archive buf len
+  let write_to_archive (DataBuf buf len) =  do doBufChunks buf len aIO_BUFFER_SIZE (archiveWriteBuf archive)
                                                return len
       write_to_archive  NoMoreData       =  return 0
 
@@ -118,10 +118,10 @@ compress_AND_write_to_archive_PROCESS archive command backdoor pipe = do
 
         -- Упаковать один солид-блок
         pos_begin <- archiveGetPos archive
-        ; times <- uiStartDeCompression "compression"              -- создать структуру для учёта времени упаковки
-        ;   compress_f                                             -- упаковать данные
-        ; uiFinishDeCompression times `on` block_type==DATA_BLOCK  -- учесть в UI чистое время операции
-        ; uiUpdateProgressIndicator 0                              -- отметить, что прочитанные данные уже обработаны
+        ; times <- uiStartDeCompression "compression"               -- создать структуру для учёта времени упаковки
+        ;   compress_f                                              -- упаковать данные
+        ; uiFinishDeCompression times `on_` block_type==DATA_BLOCK  -- учесть в UI чистое время операции
+        ; uiUpdateProgressIndicator 0                               -- отметить, что прочитанные данные уже обработаны
         pos_end   <- archiveGetPos archive
 
         -- Возвратить в первый процесс информацию о только что созданном блоке

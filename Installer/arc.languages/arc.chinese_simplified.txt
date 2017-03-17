@@ -12,23 +12,17 @@
 ***    0185 Protection:=Protection: (written in your language, of course)  ***
 ***  It's tooltip:                                                         ***
 ***    1185 Protection:=Appends recovery information to archive            ***
-***                                                                        ***
-***  Also, one section contains relative URLs for language-specific        ***
-***  resources                                                             ***
 ******************************************************************************
 
-Language name in english and mother tongue
-0000 Language=Chinese Simplified (简体中文)
-0159 Copyright=Translated by TeLeMan\nLast Updated: 2009-09-11
+Metainformation (not translations!)
+0000 Language name in english and mother tongue=Chinese Simplified (简体中文)
+0159 Translated by=Translated by TeLeMan (2010-05-06)
+0462 Short language code=zh-cn
 
-Language-specific URLs relative to http://freearc.org/ and helpfiles
+Language-specific helpfiles (not translations!)
 Filled only for languages providing their own translations
-0254 Homepage (URL, not translation!)=??
-0255 News page (URL, not translation!)=??
-0371 Forum page (URL, not translation!)=??
-0372 Wiki page (URL, not translation!)=??
-0256 Helpfile (URL, not translation!)=??
-0257 Command-line help (URL, not translation!)=??
+0256 Helpfile=??
+0257 Command-line help=??
 
 
 === Explorer context menu =======================================================
@@ -268,6 +262,7 @@ Delete dialog
 0161 Delete %1?=确定要删除"%1"吗？
 0019 Delete %2 file(s) from archive?=确定要从压缩文件中删除%2个文件？
 0020 Delete %2 file(s)?=确定要删除%2个文件？
+0484 Delete directory %1?=确定删除目录%1？
 
 
 Extract dialog
@@ -291,22 +286,27 @@ Extract dialog
 0004 Output directory:=输出目录：
 0021 Select output directory=选择输出目录
 0014 Append archive name to the output directory=附加压缩文件名到输出目录
+0468 Open output directory in Explorer=在资源管理器中打开输出目录
 --Other
 0425 Keep broken extracted files=保持损坏的已解压缩的文件
+0479 Shutdown computer when operation completed=当操作完成之后关闭计算机
 0072 Additional options:=附加选项：
 
 
 Archive information dialog
 0085 All about %1="%1"内部信息
+0465 Archive type:=压缩文件类型：
 0173 Directories:=目录数：
 0088 Files:=文件数：
 0089 Total bytes:=总计字节数：
 0090 Compressed bytes:=压缩后字节数：
 0091 Ratio:=压缩率：
 --
-0104 Directory blocks:=目录块数:
-0092 Solid blocks:=固实压缩块数:
-0093 Avg. blocksize:=平均压缩块大小:
+0104 Directory blocks:=目录块数：
+0463 Directory, bytes:=目录字节数：
+0464 Directory, compressed:=目录压缩后字节数：
+0092 Solid blocks:=固实压缩块数：
+0093 Avg. blocksize:=平均压缩块大小：
 --
 0099 Compression memory:=压缩内存占用：
 0100 Decompression memory:=解压缩内存占用：
@@ -342,10 +342,16 @@ Settings dialog
 0447 Temporary directory:=临时目录：
 0448 Select directory for temporary files=选择临时目录
 0172 Associate FreeArc with .arc files=应用FreeArc关联文件：.arc
-0361 Add captions to toolbar buttons=加入文字到工具条的按钮上
+0471 Associate FreeArc with other archives=应用FreeArc关联文件：其他压缩格式
 0370 Watch for new versions via Internet=联网检查新版本
 0168 You should restart FreeArc in order for a language settings to take effect.=你需要重启FreeArc才能使语言设置生效。
 0169 Passwords need to be entered again after restart.=口令需要重启后再次输入。
+--
+0466 Interface=界面
+0361 Add captions to toolbar buttons=加入文字到工具条的按钮上
+0469 Show "Test archive" dialog=显示“测试压缩文件”对话框
+0485 Open .tar.gz-like archives in single step=一步打开类似.tar.gz压缩文件
+0467 Unpack whole archive when running:=运行压缩文件中的下列类型的文件时解压缩整个压缩文件：
 --
 0421 Explorer integration=资源管理器集成
 0422 Enable context menu in Explorer=在资源管理器中启用右键菜单
@@ -353,7 +359,7 @@ Settings dialog
 0424 Enable individual commands:=分别设置命令：
 --
 0388 Info=信息
-0389 Largest contiguous free memblock:=最大连续剩余内存
+0461 Largest address space block:=最大连续内存地址空间
 
 
 Logfiles
@@ -365,6 +371,10 @@ Checking for updates
 0296 Cannot open %1. Do you want to check the page with browser?=不能打开"%1"页面。\n是否要用浏览器检查这个页面？
 0297 Nothing new at %1=在"%1"页面上没有发现新版本
 0298 Found new information at %1! Open the page with browser?=在"%1"页面上发现更新！是否用浏览器打开页面？
+
+About dialog
+0459 High-performance archiver=高性能的压缩软件
+0460 Free as well for commercial as for non-commercial use=对于商业用途和非商业用途都免费使用
 
 
 === Profile settings ============================================================
@@ -445,6 +455,7 @@ Progress indicator
 0052 &Background=后台(&B)
 0053 &Pause=暂停(&P)
 0054 &Continue=继续(&C)
+0470 &Close=关闭(&C)
 
 File overwrite dialog
 0078 Confirm File Replace=确认文件替换
@@ -510,6 +521,13 @@ Archive comment dialog
 0384 %2 WARNINGS WHILE REPAIRING ARCHIVE %1=修复"%1"压缩文件时有%2个警告
 
 
+=== Console messages ====================================================
+0480 Compressing %1=正在压缩%1
+0481 Testing %1=正在测试%1
+0482 Extracting %1=正在解压缩%1
+0483 Skipping %1=正在跳过%1
+
+
 === Error messages =======================================================
 0316 ERROR: %1=错误：%1
 0317 WARNING: %1=警告：%1
@@ -532,7 +550,6 @@ Archive comment dialog
 0330 can't read directory "%1"=不能读"%1"目录
 0331 can't get info about file "%1"=不能获取"%1"文件信息
 0332 can't open file "%1"=不能打开"%1"文件
-0333 CRC error in file "%1"="%1"文件内容有CRC错误
 0334 bad section %1 in %2=在"%2"中有坏块%1
 0455 Operation terminated by user!=操作被用户终止！
 0456 Program terminated by user!=程序被用户终止！
@@ -562,6 +579,13 @@ Archive comment dialog
 0358 last block of archive is not footer block=压缩文件最后一个块不是结束的块
 0377 command "%1" shouldn't have additional arguments=命令"%1"不应该有附加的参数
 0378 bad name or parameters in encryption algorithm %1=在%1加密算法中有错误的名字或者参数
+0472 Unsupported compression method for "%1".=不支持的压缩算法“%1”。
+0473 Data error in "%1". File is broken.=数据“%1”发生错误，文件已损坏。
+0474 Data error in encrypted file "%1". Wrong password?=加密文件“%1”数据有误，密码错误？
+0475 CRC failed in "%1". File is broken.=CRC 校验“%1”失败，文件已损坏。
+0476 CRC failed in encrypted file "%1". Wrong password?=加密文件“%1”CRC 数据效验有误，密码错误？
+0477 Unknown error=未知错误
+0478 can't modify non-FreeArc archive=不能修改非FreeArc压缩文件
 
 Errors returned by compression methods
 0365 general (de)compression error in %1=在%1中出现一般(解)压缩错误
@@ -663,6 +687,10 @@ Add dialog
 --
 1222 Include only files=当要指定压缩特定类型的文件(如：*.txt)就激活这个选项。
 1223 Exclude files=当要指定排除压缩特定类型的文件就激活这个选项。
+
+--Settings dialog
+1467 Unpack whole archive when running:=FreeArc可以直接运行压缩文件中的文件。不过很多文件的运行可能依赖压缩文件中其他的文件。你可以指定当运行某些类型的文件让FreeArc自动解压缩整个压缩文件。
+1469 Show "Test archive" dialog=测试压缩文件的操作将显示对话框用于输入口令等其他操作的选项。
 
 --Compression settings
 1113 Fast, low-memory decompression=禁止使用慢的或者占用内存多的解压缩算法，但是使用这个选项可能会使压缩速度变慢并且压缩率变差。

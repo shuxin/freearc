@@ -5,7 +5,7 @@
 module Cmdline where
 
 import Prelude hiding (catch)
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Control.Concurrent
 import Data.Array
@@ -80,8 +80,8 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
       makeSection (x:xs) = (cleanupSectionName x, xs)
       configSection name = lookup (cleanupSectionName name) configSections `defaultVal` []
       -- Декодировать метод сжатия/доп. алгоритмы, используя настройки из секции "[Compression methods]"
-      decode_compression_method = decode_method (configSection compressionMethods)
-      decode_methods s = ("0/"++s).$decode_compression_method.$lastElems (length (elemIndices '/' s) + 1)
+      decode_compression_method cpus = decode_method cpus (configSection compressionMethods)
+      decode_methods cpus s = ("0/"++s).$decode_compression_method cpus.$lastElems (length (elemIndices '/' s) + 1)
 
   -- А эти определения позволяют вытащить из секции элемент с заданным именем,
   -- включая случаи, когда левая сторона определения содержит несколько слов,
@@ -131,7 +131,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
       group_dir             =  fst3 grouping
       group_data            =  snd3 grouping
       defaultDirCompressor  =  thd3 grouping ||| aDEFAULT_DIR_COMPRESSION
-      orig_dir_compressor   =  findReqArg   o "dirmethod"  defaultDirCompressor .$ decode_compression_method
+      orig_dir_compressor   =  findReqArg   o "dirmethod"  defaultDirCompressor .$ decode_compression_method 1
       compression_options   =  findReqList  o "method"
       orig_sort_order       =  findMaybeArg o "sort"
       yes                   =  findNoArg    o "yes"
@@ -145,6 +145,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
       broken_archive        =  findReqArg   o "BrokenArchive" "-"  ||| "0"
       language              =  findReqArg   o "language"      "--"
       pause_before_exit     =  findOptArg   o "pause-before-exit" "--"   .$changeTo [("--",iif isGUI (iif (cmd=="t") "on" "on-warnings") "off"), ("","on"), ("yes","on"), ("no","off"), ("always","on"), ("never","off")]
+      shutdown              =  findNoArg    o "shutdown"
       noarcext              =  findNoArg    o "noarcext"
       crconly               =  findNoArg    o "crconly"
       nodata                =  findNoArg    o "nodata"
@@ -159,12 +160,12 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
 
   -- Список действий, которые надо выполнить непосредственно перед началом выполнения команды
   setup_command <- newList
-  setup_command <<= (url_setup_proxy      .$ withCString (replace ',' ' ' url_proxy))
-  setup_command <<= (url_setup_bypass_list.$ withCString (replace ',' ' ' url_bypass))
+  let setup action = do action; setup_command <<= action
+  setup (url_setup_proxy      .$ withCString (replace ',' ' ' url_proxy))
+  setup (url_setup_bypass_list.$ withCString (replace ',' ' ' url_bypass))
 
   -- Загрузить файл локализации
-  setup_command <<= (setLocale language)
-  setLocale language
+  setup (setLocale language)
 
   -- Вручную раскидать опции -o/-op
   let (op, o_rest) = partition is_op_option (findReqList o "overwrite")
@@ -202,8 +203,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
   -- Обработать список опций --charset/-sc, возвратив таблицу кодировок
   -- и процедуры чтения/записи файлов с её учётом
   let (charsets, parseFile, unParseFile, parseData, unParseData)  =  parse_charset_option (findReqList o "charset")
-  setGlobalCharsets charsets
-  setup_command <<= (setGlobalCharsets charsets)
+  setup (setGlobalCharsets charsets)
 
   -- Вручную обработать список опций --display
   let orig_display = foldl f aDISPLAY_DEFAULT (findReqList o "display")
@@ -221,9 +221,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
                     | cmdType cmd==LIST_CMD  ->  orig_display++"a"
                     | otherwise              ->  orig_display
   -- Установить display_option, поскольку она нам может понадобиться при выводе warning о содержимом external compressor section
-  display_option' =: display
-  -- Перед началом выполнения команды восстановить значение display_option, поскольку оно могло быть изменено при парсинге/выполнении других команд
-  setup_command <<= (display_option' =: display)
+  setup (display_option' =: display)
 
   -- Зарегистрируем описания внешних упаковщиков из секций [External compressor:...]
   let externalSections = filter (matchExternalCompressor.head) $ makeGroups selectSectionHeadings config
@@ -296,12 +294,10 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
   mc          <- listVal mc'    -- список алгоритмов сжатия, которые требуется отключить
   ma          <- val ma'        -- режим автоопределения типов файлов
 
-  -- Уровень сжатия, 0..9
+  -- Уровень сжатия, 0..9. Пытаемся угадать его по цифре, начинающей или завершающей строку сжатия.
   let clevel = case mainMethod of
-                 [d]     | isDigit d -> digitToInt d
-                 [d,'p'] | isDigit d -> digitToInt d
-                 [d,'x'] | isDigit d -> digitToInt d
-                 ['x',d] | isDigit d -> digitToInt d
+                 xs | xs &&& isDigit (head xs) &&& all isAlpha (tail xs)  ->  digitToInt (head xs)
+                 xs | xs &&& isDigit (last xs) &&& all isAlpha (init xs)  ->  digitToInt (last xs)
                  "mx"                -> 9
                  "max"               -> 9
                  _                   -> 4  -- default compression level
@@ -309,8 +305,9 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
   let ma_opt = case ma of "--" -> clevel
                           _    -> readInt ma
 
-  -- Перед началом выполнения команды передать в библиотеку упаковки количество тредов, которое она должна использовать
-  setup_command <<= (CompressionLib.setCompressionThreads$  cthreads ||| i getProcessorsCount)   -- By default, use number of threads equal to amount of available processors/cores
+  -- Передать в библиотеку упаковки количество тредов, которое она должна использовать
+  let cpus  =  cthreads ||| i getProcessorsCount      -- By default, use number of threads equal to amount of available processors/cores
+  setup (CompressionLib.setCompressionThreads cpus)
 
   -- Ограничения на память при упаковке/распаковке
   let climit = parseLimit "75%"$ findReqArg o "LimitCompMem"   "--"
@@ -318,14 +315,14 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
       d_def  = if cmdType cmd == ADD_CMD  then "1600mb"  else "75%"
       parseLimit deflt x = case x of
         "--" -> parsePhysMem deflt  -- По умолчанию: ограничить использование памяти 75% её физического объёма при упаковке, и 1гб при распаковке
-        "-"  -> CompressionLib.aUNLIMITED_MEMORY   -- Не ограничивать использование памяти
-        s    -> parsePhysMem s      -- Ограничить использование памяти заданным объёмом
+        "-"  -> CompressionLib.aUNLIMITED_MEMORY  -- Не ограничивать использование памяти
+        s    -> parsePhysMem s                    -- Ограничить использование памяти заданным объёмом
 
   -- Управление мультимедиа-сжатием
   let multimedia mm = case mm of
         "-"    -> filter ((`notElem` words "$wav $bmp").fst)    -- удалим группы $wav и $bmp из списка методов сжатия.
-        "fast" -> (++decode_methods "$wav=wavfast/$bmp=bmpfast") . multimedia "-"
-        "max"  -> (++decode_methods "$wav=wav/$bmp=bmp")         . multimedia "-"
+        "fast" -> (++decode_methods cpus "$wav=wavfast/$bmp=bmpfast") . multimedia "-"
+        "max"  -> (++decode_methods cpus "$wav=wav/$bmp=bmp")         . multimedia "-"
         "+"    -> \m -> case () of
                           _ | m.$isFastDecompression  -> m.$multimedia "fast"
                             | otherwise               -> m.$multimedia "max"
@@ -349,7 +346,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
   let data_compressor = if      nodata   then [("", [aFAKE_COMPRESSION])]
                         else if crconly  then [("", [aCRC_ONLY_COMPRESSION])]
                         else ((mainMethod ||| aDEFAULT_COMPRESSOR) ++ userMethods)
-                               .$ decode_compression_method
+                               .$ decode_compression_method cpus
                                .$ multimedia mm
                                .$ applyAll (map method_change mc)
                                .$ setDictionary dictionary
@@ -368,22 +365,25 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
   let compressionMem = getCompressionMem data_compressor
 
   -- Вычислить, сколько памяти нужно использовать под буфер упреждающего чтения файлов.
-  -- Если размер кеша не задан явно опцией --cache, мы используем от 1 мб до 16 мб,
+  -- Если размер кеша не задан явно опцией --cache, мы используем от 256 кб до 16 мб,
   -- стараясь сделать так, чтобы общее потребление памяти программой не превосходило
   -- половины от её физического объёма (не считая памяти, необходимой для распаковки данных
   -- в обновляемых архивах). Разумеется, при наличии параллельно выполняющихся memory-intensive
   -- tasks (и в частности, параллельно работающих копиях FreeArc) эта тактика не очень удачна.
-  -- Лучше было бы смотреть на объём *свободного* физического ОЗУ в момент запуска программы
-  let minCache  =  1*mb                             -- Мин. размер кеша  - 1  мб
-      maxCache  =  (16*mb) `atLeast` maxBlockSize   -- Макс. размер кеша - 16 мб или размер блока для поблочных алгоритов (lzp/grzip/dict)
-      availMem  =  if i(parsePhysMem "50%") >= compressionMem      -- "Свободно памяти" = 50% ОЗУ минус память, требуемая для сжатия.
-                       then parsePhysMem "50%" - i compressionMem
-                       else 0
-      cache     =  clipToMaxInt $ atLeast aBUFFER_SIZE $  -- Кеш должен включать как минимум один буфер
-                       case (findReqArg o "cache" "--") of
-                           "--" -> availMem.$clipTo minCache maxCache
-                           "-"  -> aBUFFER_SIZE
-                           s    -> parsePhysMem s
+  -- Лучше было бы смотреть на объём *свободного* физического ОЗУ + дискового кеша ОС в момент запуска программы.
+  let minCache   =  4*aIO_BUFFER_SIZE   -- Мин. разумный размер кеша при сжатии
+      maxCache   =  16*mb               -- Макс. размер кеша - 16 мб
+      availCMem  =  i(parsePhysMem "50%" `min` climit) `minusPositive` compressionMem  -- "Свободно памяти" = min(50% ОЗУ,-lc) минус память, требуемая для сжатия.
+      compression_cache    =  clipToMaxInt $
+                                case (findReqArg o "cache" "--") of
+                                    "--" -> availCMem.$clipTo minCache maxCache
+                                    "-"  -> minCache
+                                    s    -> parsePhysMem s
+      decompression_cache  =  clipToMaxInt $
+                                case (findReqArg o "cache" "--") of
+                                    "--" -> minCache
+                                    "-"  -> 0
+                                    s    -> parsePhysMem s
 
   -- Автоматически включить опцию --recompress для команд, копирующих архив,
   -- если указаны опции -m../--nodata/--crconly
@@ -473,11 +473,11 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
 
   -- Отбор файлов по размеру
   let size_filter _  "--"   = []
-      size_filter op option = [`op` parseSize option]
+      size_filter op option = [(`op` parseSize option)]
 
   -- Отбор файлов по времени модификации, time в формате YYYYMMDDHHMMSS
   let time_filter _  "--" = []
-      time_filter op time = [`op` (time.$makeCalendarTime.$toClockTime.$convert_ClockTime_to_CTime)]
+      time_filter op time = [(`op` (time.$makeCalendarTime.$toClockTime.$convert_ClockTime_to_CTime))]
       -- Преобразует строчку вида YYYY-MM-DD_HH:MM:SS в CalendarTime и выставляет корректное ctTZ в зависимости от её времени года (для этого toCalendarTime.toClockTime делается дважды)
       makeCalendarTime str = ct {ctTZ = ctTZ$ unsafePerformIO$ toCalendarTime$ toClockTime ct2}
           where        ct2 = ct {ctTZ = ctTZ$ unsafePerformIO$ toCalendarTime$ toClockTime ct}
@@ -499,7 +499,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
 
   -- Отбор файлов по "старости", time в формате [<ndays>d][<nhours>h][<nminutes>m][<nseconds>s]
   let oldness_filter _  "--" = []
-      oldness_filter op time = [`op` (time.$calcDiff.$(`addToClockTime` current_time).$convert_ClockTime_to_CTime)]
+      oldness_filter op time = [(`op` (time.$calcDiff.$(`addToClockTime` current_time).$convert_ClockTime_to_CTime))]
 
       calcDiff  =  foldl updateTD noTimeDiff . recursive (spanBreak isDigit)
       updateTD td x = case (last x) of
@@ -563,7 +563,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
   -- Запретить запрос паролей, необходимых для распаковки, если указано -op-/-p-/-hp-
   let dont_ask_passwords  =  last ("":op_opt) == "-" || findReqArg o "OldPassword" "" == "-"  ||  findReqArg o "password" "" == "-"  ||  findReqArg o "HeadersPassword" "" == "-"
   -- Список паролей, используемых при распаковке
-  mvar_unpack_passwords  <-  newMVar$ deleteIfs [=="",=="?",=="-",=="--"]$ op_opt ++ findReqList o "OldPassword" ++ findReqList o "password" ++ findReqList o "HeadersPassword"
+  mvar_unpack_passwords  <-  newMVar$ deleteIfs [(==""),(=="?"),(=="-"),(=="--")]$ op_opt ++ findReqList o "OldPassword" ++ findReqList o "password" ++ findReqList o "HeadersPassword"
   -- Содержимое ключевых файлов, используемых при распаковке
   oldKeyfileContents     <-  mapM fileGetBinary (findReqList o "OldKeyfile" ++ findReqList o "keyfile")
   -- Содержимое ключевого файл, используемого при упаковке
@@ -639,7 +639,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
         (Just  x,  _)  -> x                     -- Если порядок сортировки был явно указан, то использовать его
         (_, [GroupNone]) -> ""                  -- Если не используется solid-сжатие - отключить сортировку
         _  -> if getMainCompressor data_compressor
-                 .$anyf [==aNO_COMPRESSION, isFakeCompressor, isVeryFastCompressor]
+                 .$anyf [(==aNO_COMPRESSION), isFakeCompressor, isVeryFastCompressor]
                 then ""                         -- Если -m0/--nodata/--crconly/tor:1..4/lzp:h13..15 - также отключить сортировку
                 else aDEFAULT_SOLID_SORT_ORDER  -- Иначе - использовать стандартный порядок сортировки для solid-архивов
 
@@ -706,7 +706,8 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
     , opt_keep_original        = keep_original
     , opt_noarcext             = noarcext
     , opt_nodir                = findNoArg    o "nodir"
-    , opt_cache                = cache
+    , opt_compression_cache    = compression_cache
+    , opt_decompression_cache  = decompression_cache
     , opt_update_type          = update_type
     , opt_x_include_dirs       = x_include_dirs
     , opt_sort_order           = sort_order
@@ -730,6 +731,7 @@ parseCmdline cmdline  =  (`mapMaybeM` split ";" cmdline) $ \args -> do
     , opt_original             = findOptArg   o "original"          "--"
     , opt_save_bad_ranges      = findReqArg   o "save-bad-ranges"   ""
     , opt_pause_before_exit    = pause_before_exit
+    , opt_shutdown             = shutdown
     , opt_limit_compression_memory   = climit
     , opt_limit_decompression_memory = dlimit
 
@@ -767,17 +769,18 @@ replace_list_files parseFile  =  concatMapM $ \filespec ->
     Just listfile  ->  parseFile 'l' listfile >>== deleteIf null
     _              ->  return [filespec]
 
--- |Если ком. строка представлена в виде одного параметра @filename, то надо прочитать её из указанного файла
+-- |Если ком. строка представлена в виде одного параметра @cmdfile, то надо прочитать её из указанного файла
 processCmdfile args =
   case args of
     ['@':cmdfile] -> fileGetBinary cmdfile >>== utf8_to_unicode >>== splitArgs
     _             -> return args
 
- where -- Разбивает строку с параметрами на отдельные аргументы
+ where -- Разбивает строку с параметрами на отдельные аргументы (обратная операция к unparseCommand)
        splitArgs = parseArg . dropWhile isSpace
        parseArg ""          =  []
+       -- имитировать виндовый разборщик ком. строки: "param" -> param, "dir\\" -> dir\ --
        parseArg ('"':rest)  =  let (arg,_:rest1) = break (=='"') rest
-                                 in arg:splitArgs rest1
+                                 in (replaceAtEnd "\\\\" "\\" arg):splitArgs rest1
        parseArg rest        =  let (arg,rest1) = break isSpace rest
                                  in arg:splitArgs rest1
 
@@ -800,7 +803,7 @@ parseSolidOption opt =
     -- а `parse` - их последовательность, например -se100f10m
     parse = map parse1 . recursive split
       where split ('e':xs) = ("e",xs)
-            split xs       = spanBreak (anyf [isDigit, =='e']) xs
+            split xs       = spanBreak (anyf [isDigit, (=='e')]) xs
     parse1 s = case s of
                 ""  -> GroupAll
                 "e" -> GroupByExt

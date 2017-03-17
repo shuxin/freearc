@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -cpp -fno-monomorphism-restriction #-}
+{-# OPTIONS_GHC -cpp #-}
 ----------------------------------------------------------------------------------------------------
 ---- ”паковка и распаковка данных.                                                              ----
 ---- »нтерфейс с написанными на —и процедурами, выполн€ющими всю реальную работу.               ----
@@ -11,7 +11,7 @@ import HsCELS
 module CompressionLib where
 
 import Control.Concurrent
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.Bits
 import Data.Char
@@ -62,7 +62,11 @@ decompressMemWithHeader a b c d = c_DecompressMemWithHeader a b c d
 
 -- |Return canonical representation of compression method
 canonizeCompressionMethod :: Method -> Method
-canonizeCompressionMethod = doWithMethod c_CanonizeCompressionMethod
+canonizeCompressionMethod = doWithMethod (\a b -> c_CanonizeCompressionMethod a b 0)
+
+-- |Return pure representation of compression method for saving in archive header (f.e. without :t:i for 4x4)
+purifyCompressionMethod :: Method -> Method
+purifyCompressionMethod = doWithMethod (\a b -> c_CanonizeCompressionMethod a b 1)
 
 -- |Returns memory used to compress/decompress, dictionary or block size of method given
 getCompressionMem, getDecompressionMem, getDictionary, getBlockSize :: Method -> MemSize
@@ -253,7 +257,7 @@ foreign import ccall unsafe  "External/C_External.h  AddExternalCompressor"
 
 -- |Returns canonical representation of compression method or error code
 foreign import ccall unsafe  "Compression.h  CanonizeCompressionMethod"
-   c_CanonizeCompressionMethod   :: CMethod -> CMethod -> IO Int
+   c_CanonizeCompressionMethod   :: CMethod -> CMethod -> Int -> IO Int
 
 foreign import ccall unsafe  "Compression.h CompressionService"
    c_CompressionService :: CMethod -> CString -> CInt -> VoidPtr -> FunPtr CALLBACK_FUNC -> IO CInt
@@ -347,7 +351,7 @@ type Parameter = String
 type MemSize = CUInt
 
 -- |Unlimited memory usage
-aUNLIMITED_MEMORY = maxBound::MemSize
+aUNLIMITED_MEMORY = 0::MemSize
 
 -- |Typeless pointer
 type VoidPtr = Ptr ()

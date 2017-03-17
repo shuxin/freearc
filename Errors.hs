@@ -6,7 +6,7 @@ module Errors where
 
 import Prelude hiding (catch)
 import Control.Concurrent
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.Char
 import Data.Maybe
@@ -48,7 +48,12 @@ data ErrorTypes = GENERAL_ERROR                 [String]
                 | CANT_READ_DIRECTORY           String
                 | CANT_GET_FILEINFO             String
                 | CANT_OPEN_FILE                String
+                | UNSUPPORTED_METHOD            String
+                | DATA_ERROR                    String
+                | DATA_ERROR_ENCRYPTED          String
                 | BAD_CRC                       String
+                | BAD_CRC_ENCRYPTED             String
+                | UNKNOWN_ERROR                 String
                 | BAD_CFG_SECTION               String [String]
                 | OP_TERMINATED
                 | TERMINATED
@@ -130,17 +135,20 @@ shutdown msg exitCode = do
     ignoreErrors$ hFlush stderr
     --killThread myThread
 
+    -- Выключить компьютер если запрошено
+    powerOffComputer `onM` val perform_shutdown
+
     -- Make a pause if necessary
-    when (exitCode/=aEXIT_CODE_USER_BREAK) $ do
-      warningsBefore' <- val warningsBefore
-      pause_option <- val pause_before_exit
-      pause <- val pauseAction
-      pause `on` case pause_option of
-                   "on"          -> True
-                   "off"         -> False
-                   "on-warnings" -> w>warningsBefore' || exitCode/=aEXIT_CODE_SUCCESS
-                   "on-error"    -> exitCode/=aEXIT_CODE_SUCCESS
-                   _             -> False
+    unlessM (val fileManagerMode) $ do
+      when (exitCode/=aEXIT_CODE_USER_BREAK) $ do
+        warningsBefore' <- val warningsBefore
+        pause_option <- val pause_before_exit
+        pause <- val pauseAction
+        case pause_option of
+          "on"          -> pause
+          "on-warnings" -> pause `on_` w>warningsBefore' || exitCode/=aEXIT_CODE_SUCCESS
+          "on-error"    -> pause `on_` exitCode/=aEXIT_CODE_SUCCESS
+          _             -> doNothing0
 
   -- And finally - exit program!
   exit (exitCode  |||  (w &&& aEXIT_CODE_WARNINGS))
@@ -152,6 +160,9 @@ shutdown msg exitCode = do
      | otherwise  -> ExitSuccess
 #endif
   return undefined
+
+-- |Вызывается когда очередь команд становится пуста
+onEmptyQueue  =  powerOffComputer `onM` val perform_shutdown
 
 -- |"handle" с выполнением "onException" также при ^Break
 handleCtrlBreak name onException action = do
@@ -219,6 +230,10 @@ pause_before_exit = unsafePerformIO (ref "")
 pauseAction = unsafePerformIO (ref$ return ()) :: IORef (IO())
 {-# NOINLINE pauseAction #-}
 
+-- |Выключить компьютер по окончанию работы?
+perform_shutdown = unsafePerformIO (ref False)
+{-# NOINLINE shutdown #-}
+
 
 ---------------------------------------------------------------------------------------------------
 ---- Тексты сообщений о различных типах ошибок. Подходящий ресурс для интернализации --------------
@@ -232,7 +247,7 @@ errormsg (BROKEN_ARCHIVE arcname msgs) = do
   i18fmt ["0341 %1 isn't archive or this archive is corrupt: %2. Please recover it using 'r' command or use -tp- option to ignore Recovery Record", arcname, msg]
 
 errormsg (INTERNAL_ERROR msg) =
-  return$ "FreeArc internal error: "++msg
+  return$ aFreeArc++" internal error: "++msg
 
 errormsg (COMPRESSION_ERROR msgs) =
   i18fmt msgs
@@ -283,8 +298,23 @@ errormsg (CANT_GET_FILEINFO filename) =
 errormsg (CANT_OPEN_FILE filename) =
   i18fmt ["0332 can't open file \"%1\"", filename]
 
+errormsg (UNSUPPORTED_METHOD filename) =
+  i18fmt ["0472 Unsupported compression method for \"%1\".", filename]
+
+errormsg (DATA_ERROR filename) =
+  i18fmt ["0473 Data error in \"%1\". File is broken.", filename]
+
+errormsg (DATA_ERROR_ENCRYPTED filename) =
+  i18fmt ["0474 Data error in encrypted file \"%1\". Wrong password?", filename]
+
 errormsg (BAD_CRC filename) =
-  i18fmt ["0333 CRC error in file \"%1\"", filename]
+  i18fmt ["0475 CRC failed in \"%1\". File is broken.", filename]
+
+errormsg (BAD_CRC_ENCRYPTED filename) =
+  i18fmt ["0476 CRC failed in encrypted file \"%1\". Wrong password?", filename]
+
+errormsg (UNKNOWN_ERROR filename) =
+  i18fmt ["0477 Unknown error", filename]
 
 errormsg (BAD_CFG_SECTION cfgfile section) =
   i18fmt ["0334 bad section %1 in %2", head section, cfgfile]
@@ -370,25 +400,25 @@ printLineLn str = do
 printLineNeedSeparator str = do
   separator' =: ("",str)
 
--- Записать строку в логфайл.
--- Вывести её на экран при условии, что её вывод не запрещён опцией --display
-condPrintLine c line = do
-  if c=="G" then val loggingHandlers >>= mapM_ ($line) else do
-  display_option <- val display_option'
-  when (c/="$" || (display_option `contains` '#')) $ do
-      printLog line
-  when (display_option `contains_one_of` c) $ do
-      printLineC c line
-
 -- |Напечатать строку с разделителем строк после неё
 condPrintLineLn c line = do
   condPrintLine c line
   condPrintLineNeedSeparator c "\n"
 
+-- Записать строку в логфайл.
+-- Вывести её на экран при условии, что её вывод не запрещён опцией --display
+condPrintLine c line = do
+  if c=="G" then val loggingHandlers >>= mapM_ ($line) else do
+  display_option <- val display_option'
+  when (c `notElem` words "$ !"   ||   (display_option `contains` '#')) $ do
+      printLog line
+  when (display_option `contains_one_of` c) $ do
+      printLineC c line
+
 -- Отделить последующий вывод заданной строкой при условии разрешения вывода класса c
 condPrintLineNeedSeparator c str = do
   display_option <- val display_option'
-  when (c/="$" || (display_option `contains` '#')) $ do
+  when (c `notElem` words "$ !"   ||   (display_option `contains` '#')) $ do
       log_separator' =: str
   when (c=="" || (display_option `contains_one_of` c)) $ do
       separator' =: (c,str)
@@ -418,7 +448,7 @@ logfile'        = unsafePerformIO$ newIORef Nothing
 -- Переменные, используемые для украшения печати
 separator'      = unsafePerformIO$ newIORef ("","") :: IORef (String,String)
 log_separator'  = unsafePerformIO$ newIORef "\n"    :: IORef String
-display_option' = unsafePerformIO$ newIORef$ error "undefined display_option"
+display_option' = unsafePerformIO$ newIORef ""      :: IORef String
 -- Операции вывода сообщений в лог
 loggingHandlers = unsafePerformIO$ newIORef [] :: IORef [String -> IO ()]
 
@@ -510,4 +540,8 @@ fileCopy srcname dstname = do
 -- |Stop program execution
 foreign import ccall unsafe "stdlib.h exit"
   exit :: Int -> IO ()
+
+-- |Reboot computer (
+foreign import ccall unsafe "PowerOffComputer"
+  powerOffComputer :: IO ()
 

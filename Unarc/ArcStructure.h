@@ -9,7 +9,9 @@
 
 #include "../Environment.h"
 #include "../Compression/Compression.h"
+#include "../Compression/MultiThreading.cpp"    // required for inclusion of multi-threading primitives used in MultiDecompress()
 
+#define FREEARC_FILE_EXTENSION             "arc"
 #define aSIGNATURE make4byte(65,114,67,1)  /* Сигнатура архивов FreeArc: ArC */
 #define MAX_FOOTER_DESCRIPTOR_SIZE 4096    /* Максимальный размер дескриптора блока архива */
 

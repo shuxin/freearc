@@ -19,7 +19,7 @@ module Charsets where
 import Prelude hiding (catch)
 import Control.Concurrent
 import Control.Concurrent.MVar
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.Array
 import Data.Char
@@ -155,6 +155,8 @@ linesCRLF = recursive oneline  -- oneline "abc\n..." = ("abc","...")
 readConfigFile          = parseFile   '8'
 saveConfigFile   file   = unParseFile '8' file . joinWith "\n"
 modifyConfigFile file f = readConfigFileManyTries file >>== f >>= saveConfigFile file
+-- Под Windows дополнительно добавляем BOM и используем CR/LF
+saveWindowsConfigFile file = unParseFile '8' file . (chr 0xFEFF:) . joinWith "\r\n"
 
 -- Прочитать конфиг-файл, повторяя попытки если он пуст/недоступен
 readConfigFileManyTries file = go 1 where
@@ -401,6 +403,10 @@ setLocale localeFile = do
 i18ns = mapM i18n
 i18n  = i18n' .>>== fst
 i18n' = i18n_general (val locale)
+i18no = drop 5    -- убрать номер из строки, не переводя её на местный язык
+
+-- |Проверка что это строка вида "dddd ...."
+is_i18 str = all isDigit (take 4 str) && (take 1 (drop 4 str) == " ")
 
 {-# NOINLINE i18fmt #-}
 -- |Отформатировать список строк, используя первую как требущий локализации шаблон,

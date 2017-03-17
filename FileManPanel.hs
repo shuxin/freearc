@@ -5,7 +5,7 @@ module FileManPanel where
 
 import Prelude hiding (catch)
 import Control.Concurrent
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.Char
 import Data.IORef
@@ -14,6 +14,7 @@ import Data.Maybe
 import System.IO.Unsafe
 import System.Time
 
+import System.Glib.GObject
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.ModelView as New
 
@@ -26,13 +27,10 @@ import Options
 import Cmdline
 import UIBase
 import UI
+import Arhive7zLib
 import ArhiveDirectory
 import FileManUtils
 
-
--- |Пароли шифрования и расшифровки
-encryptionPassword  =  unsafePerformIO$ newIORef$ ""
-decryptionPassword  =  unsafePerformIO$ newIORef$ ""
 
 ----------------------------------------------------------------------------------------------------
 ---- Операции файл-менеджера -----------------------------------------------------------------------
@@ -52,6 +50,7 @@ newEmptyFM = do
                        , fm_history      = history
                        , fm_onChdir      = []
                        , fm_sort_order   = ""
+                       , fm_passwords    = []
                        , subfm           = FM_Directory {subfm_dir=curdir}}
   return fm'
 
@@ -60,22 +59,22 @@ newFM window view model selection statusLabel messageCombo = do
   fm' <- newEmptyFM
   messageCounter <- ref 0  -- number of last message + 1 in combobox
   fm' .= (\fm -> fm { fm_window_      = Just window
-                   , fm_view         = view
-                   , fm_model        = model
-                   , fm_selection    = selection
-                   , fm_statusLabel  = statusLabel
-                   , fm_messageCombo = (messageCombo, messageCounter)})
+                    , fm_view         = view
+                    , fm_model        = model
+                    , fm_selection    = selection
+                    , fm_statusLabel  = statusLabel
+                    , fm_messageCombo = (messageCombo, messageCounter)})
+  fm'       `fmOnChdir`              fmStatusBarTotals fm'
   selection `New.onSelectionChanged` fmStatusBarTotals fm'
   return fm'
 
 -- |Открыть архив и возвратить его как объект состояния файл-менеджера
 newFMArc fm' arcname arcdir = do
-  xpwd'     <- val decryptionPassword
-  xkeyfile' <- fmGetHistory1 fm' "keyfile" ""
-  [command] <- parseCmdline$ ["l", arcname]++(xpwd' &&& ["-op"++xpwd'])
-                                           ++(xkeyfile' &&& ["--OldKeyfile="++xkeyfile'])
+  decryptionOptions <- fmGetDecryptionOptions fm'
+  [command]  <- parseCmdline$ ["l", arcname]++decryptionOptions
   command <- (command.$ opt_cook_passwords) command ask_passwords  -- подготовить пароли в команде к использованию
   archive <- archiveReadInfo command "" "" (const True) doNothing2 arcname
+  fmSaveDecryptionPasswords fm' command
   let filetree = buildTree$ map (fiToFileData.cfFileInfo)$ arcDirectory archive
   arcClose archive
   return$ FM_Archive archive arcname arcdir filetree
@@ -89,7 +88,7 @@ closeFMArc fm' = do
     fm' .= \fm -> fm {subfm = (subfm fm) {subfm_archive = phantomArc}}
 
 -- Перейти в архив/каталог filename
-chdir fm' filename' = do
+fmChdir fm' filename' = do
   fm <- val fm'
   filename <- fmCanonicalizePath fm' filename'
   res <- splitArcPath fm' filename
@@ -104,9 +103,12 @@ chdir fm' filename' = do
                        arc <- if isFM_Archive fm && arcname==fm_arcname fm && not (arcPhantom (fm_archive fm))
                                 then return ((fm.$subfm) {subfm_arcdir=arcdir})
                                 else newFMArc fm' arcname arcdir
-                       return (arc.$subfm_filetree.$ftFilesIn arcdir fdArtificialDir, arc)
+                       -- Если arcdir - имя существующего файла внутри архива, то перейти в него нельзя :)
+                       let filedata = ftFind arcdir (subfm_filetree arc)
+                           is_dir   = isNothing filedata  ||  fdIsDir (fromJust filedata)
+                       return$ if is_dir  then (arc.$subfm_filetree.$ftFilesIn arcdir fdArtificialDir, arc)  else undefined
   -- Запишем текущий каталог/архив в fm и выведем на экран новый список файлов
-  fm' =: fm {subfm = sub}
+  fm' .= \fm -> fm {subfm = sub}
   fmSetFilelist fm' (files.$ sortOnColumn (fm_sort_order fm))
   -- Обновим статусбар и выполним все остальные запрограммированные действия.
   sequence_ (fm_onChdir fm)
@@ -194,6 +196,13 @@ fmErrorMsg fm' msg = do
 fmInfoMsg fm' msg = do
   fm <- val fm'
   msgBox (fm_window fm) MessageInfo msg
+
+-- |Опции расшифровки, добавляемые в командную строку
+fmGetDecryptionOptions fm' = do
+  passwords <- fmGetDecryptionPasswords fm'
+  keyfile   <- fmGetHistory1 fm' "keyfile" ""
+  return$ (map ("-op"++) passwords)++
+          (keyfile  &&&  ["--OldKeyfile="++clear keyfile])
 
 
 ----------------------------------------------------------------------------------------------------
@@ -306,7 +315,7 @@ fmSaveSizePos        fm' dialog name           =  do fm <- val fm';  hfSaveSizeP
 fmSaveMaximized      fm' dialog name           =  do fm <- val fm';  hfSaveMaximized      (fm_history fm) dialog name
 fmRestoreSizePos     fm' window name deflt     =  do fm <- val fm';  hfRestoreSizePos     (fm_history fm) window name deflt
 fmCacheConfigFile    fm' action                =  do fm <- val fm';  hfCacheConfigFile    (fm_history fm) action
-fmUpdateConfigFiles  fm'                       =  do fm <- val fm';  hfUpdateConfigFiles  (fm_history fm)
+fmUpdateConfigFile   fm'                       =  do fm <- val fm';  hfUpdateConfigFile   (fm_history fm)
 
 
 ----------------------------------------------------------------------------------------------------
@@ -374,7 +383,7 @@ fmEntryWithHistory fm' tag filter_p process = do
            , ehGtkWidget = gtkWidget { gwWidget        = comboBox
                                      , gwGetValue      = getText
                                      , gwSetValue      = setText
-                                     , gwSetOnUpdate   = \action -> New.onChanged comboBox action >> return ()
+                                     , gwSetOnUpdate   = \action -> on comboBox changed action >> return ()
                                      , gwSaveHistory   = saveHistory
                                      , gwRereadHistory = readHistory
                                      }
@@ -456,16 +465,16 @@ fmCheckButtonWithHistory fm' tag deflt title = do
 {-# NOINLINE fmExpanderWithHistory #-}
 -- |Создать экспандер с историей под тегом tag
 fmExpanderWithHistory fm' tag deflt title = do
-  control <- expander title
+  (control,innerBox) <- expander title
   let rereadHistory = do
         control =:: fmGetHistoryBool fm' tag deflt
   let saveHistory = do
         fmReplaceHistoryBool fm' tag =<< val control
   rereadHistory
-  return$ control
-           { gwSaveHistory   = saveHistory
-           , gwRereadHistory = rereadHistory
-           }
+  return$ (control { gwSaveHistory   = saveHistory
+                   , gwRereadHistory = rereadHistory
+                   }
+          ,innerBox)
 
 {-# NOINLINE fmDialog #-}
 -- |Диалог со стандартными кнопками OK/Cancel
@@ -479,7 +488,7 @@ fmDialog fm' title flags action = do
       set dialog [windowTransientFor := fm_window fm]
     -- Создать 2 или 3 кнопки
     addStdButton dialog ResponseOk       >>= \okButton -> do
-    addStdButton dialog aResponseDetach  `on`  (AddDetachButton `elem` flags)
+    addStdButton dialog aResponseDetach  `on_`  (AddDetachButton `elem` flags)
     addStdButton dialog ResponseCancel
     --
     dialogSetDefaultResponse dialog ResponseOk
@@ -508,7 +517,7 @@ fmDialogRun fm' dialog name = do
 
 createFilePanel = do
   let columnTitles = ["0015 Name", "0016 Size", "0017 Modified", "0018 DIRECTORY"]
-      n = map (drop 5) columnTitles
+      n = map i18no columnTitles
   s <- i18ns columnTitles
   createListView fmname [(n!!0, s!!0, fmname,                                                       []),
                          (n!!1, s!!1, (\fd -> if (fdIsDir fd) then (s!!3) else (show3$ fdSize fd)), [cellXAlign := 1]),
@@ -532,8 +541,7 @@ createListView searchField columns = do
   addColumn view model onColumnTitleClicked "" "" (const "") []
   -- Включаем поиск по первой колонке
   New.treeViewSetEnableSearch view True
-  New.treeViewSetSearchColumn view 0
-  New.treeViewSetSearchEqualFunc view $ \col str iter -> do
+  New.treeViewSetSearchEqualFunc view $ Just $ \str iter -> do
     (i:_) <- New.treeModelGetPath model iter
     row <- New.listStoreGetValue model i
     return (strLower(searchField row) ~= strLower(str)++"*")
@@ -559,14 +567,15 @@ addColumn view model onColumnTitleClicked colname title field attrs = do
   New.cellLayoutPackStart col1 renderer1 False
   -- Попытки сделать поле имени автоматически увеличивающимся при увеличении окна программы
   -- (bool New.cellLayoutPackStart New.cellLayoutPackEnd expand) col1 renderer1 expand
-  -- set col1 [New.treeViewColumnSizing := TreeViewColumnAutosize] `on` expand
-  -- set col1 [New.treeViewColumnSizing := TreeViewColumnFixed] `on` not expand
+  -- set col1 [New.treeViewColumnSizing := TreeViewColumnAutosize] `on_` expand
+  -- set col1 [New.treeViewColumnSizing := TreeViewColumnFixed] `on_` not expand
   -- cellLayoutSetAttributes  [New.cellEditable := True, New.cellEllipsize := EllipsizeEnd]
   when (colname/="") $ do
     set col1 [ New.treeViewColumnResizable   := True
              , New.treeViewColumnSizing      := TreeViewColumnFixed
              , New.treeViewColumnClickable   := True
-             , New.treeViewColumnReorderable := True ]
+             , New.treeViewColumnReorderable := True
+             , nameAttr                      := Just colname]
   -- При нажатии на заголовок столбца вызвать колбэк
   col1 `New.onColClicked` do
     val onColumnTitleClicked >>= ($colname)
@@ -580,4 +589,26 @@ showSortOrder columns colname order = do
   let Just col1  =  colname `lookup` columns
   New.treeViewColumnSetSortIndicator col1 True
   New.treeViewColumnSetSortOrder     col1 order
+
+-- |Cохранение порядка и ширины колонок в конфиг-файл
+saveColumnsOrderAndWidths fm' listname listView columns = do
+  colnames  <-  New.treeViewGetColumns listView  >>=  mapM (`get` nameAttr)
+  fmReplaceHistory fm' (listname++".ColumnOrder") (unwords$ catMaybes colnames)
+  for columns $ \(name,col1) -> do
+    w <- New.treeViewColumnGetWidth col1
+    fmReplaceHistory fm' (listname++".ColumnWidth."++name) (show w)
+
+-- |Восстановление сохранённых порядка и ширины колонок
+restoreColumnsOrderAndWidths fm' listname listView columns = do
+  order <- words `fmap` fmGetHistory1 fm' (listname++".ColumnOrder") ""
+  for (reverse order) $ \colname -> do
+    whenJust (lookup colname columns) $
+      New.treeViewMoveColumnFirst listView
+  for columns $ \(name,col1) -> do
+    w <- readInt  `fmap`  fmGetHistory1 fm' (listname++".ColumnWidth."++name) "150"
+    New.treeViewColumnSetFixedWidth col1 w
+
+-- |Атрибут, хранящий имя столбца
+nameAttr :: Attr TreeViewColumn (Maybe String)
+nameAttr = unsafePerformIO objectCreateAttribute
 

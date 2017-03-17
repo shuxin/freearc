@@ -13,7 +13,7 @@ public:
   virtual int compress   (CALLBACK_FUNC *callback, void *auxdata);
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия (функция, обратная к parse_BCJ_X86)
-  virtual void ShowCompressionMethod (char *buf);
+  virtual void ShowCompressionMethod (char *buf, bool purify);
 
   // Получить/установить объём памяти, используемой при упаковке/распаковке, размер словаря или размер блока
   virtual MemSize GetCompressionMem     (void)         {return LARGE_BUFFER_SIZE;}

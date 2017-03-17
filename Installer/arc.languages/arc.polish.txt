@@ -12,23 +12,17 @@
 ***    0185 Protection:=Protection: (written in your language, of course)  ***
 ***  It's tooltip:                                                         ***
 ***    1185 Protection:=Appends recovery information to archive            ***
-***                                                                        ***
-***  Also, one section contains relative URLs for language-specific        ***
-***  resources                                                             ***
 ******************************************************************************
 
-Language name in english and mother tongue
-0000 Language=Polish (Polski)
-0159 Copyright=Translated by cHr
+Metainformation (not translations!)
+0000 Language name in english and mother tongue=Polish (Polski)
+0159 Translated by=Translated by cHr
+0462 Short language code=pl
 
-Language-specific URLs relative to http://freearc.org/ and helpfiles
+Language-specific helpfiles (not translations!)
 Filled only for languages providing their own translations
-0254 Homepage (URL, not translation!)=??
-0255 News page (URL, not translation!)=??
-0371 Forum page (URL, not translation!)=??
-0372 Wiki page (URL, not translation!)=??
-0256 Helpfile (URL, not translation!)=??
-0257 Command-line help (URL, not translation!)=??
+0256 Helpfile=??
+0257 Command-line help=??
 
 
 === Explorer context menu =======================================================
@@ -268,6 +262,7 @@ Delete dialog
 0161 Delete %1?=Czy na pewno chcesz usunąć %1?
 0019 Delete %2 file(s) from archive?=Czy na pewno chcesz usunąć plików: %2 z archiwum ?
 0020 Delete %2 file(s)?=Czy na pewno chcesz usunąć plików: %2 ?
+0484 Delete directory %1?=Czy na pewno chcesz usunąć katalog %1?
 
 
 Extract dialog
@@ -291,13 +286,16 @@ Extract dialog
 0004 Output directory:=Wypakuj do:
 0021 Select output directory=Wskaż miejsce dla wypakowanych plików
 0014 Append archive name to the output directory=Dołącz nazwę archiwum do katalogu wyjściowego
+0468 Open output directory in Explorer=Otwórz katalog w Explorerze
 --Other
 0425 Keep broken extracted files=Nie usuwaj uszkodzonych plików podczas wypakowywania
+0479 Shutdown computer when operation completed=Wyłącz komputer po zakończeniu operacji
 0072 Additional options:=Dodatkowe opcje:
 
 
 Archive information dialog
 0085 All about %1=Wszystko o %1
+0465 Archive type:=Typ archiwum:
 0173 Directories:=Folderów:
 0088 Files:=Plików:
 0089 Total bytes:=Rozmiar:
@@ -305,6 +303,8 @@ Archive information dialog
 0091 Ratio:=Stopień kompresji:
 --
 0104 Directory blocks:=Bloki katalogów:
+0463 Directory, bytes:=Katalog, bajtów:
+0464 Directory, compressed:=Katalog, skompresowany:
 0092 Solid blocks:=Stałe bloki
 0093 Avg. blocksize:=Średni rozmiar bloku:
 --
@@ -342,10 +342,16 @@ Settings dialog
 0447 Temporary directory:=Katalog tymczasowy
 0448 Select directory for temporary files=Wybierz katalog dla plików tymczasowych
 0172 Associate FreeArc with .arc files=Skojarz FreeArc z rozszerzeniem .arc
-0361 Add captions to toolbar buttons=Pokazuj opisy na pasku narzędzi
+0471 Associate FreeArc with other archives=Skojarz FreeArc z innymi archiwami
 0370 Watch for new versions via Internet=Sprawdzaj przez internet czy są nowe wersje programu
 0168 You should restart FreeArc in order for a language settings to take effect.=Powinieneś zrestartować FreeArc aby ustawienia języków zostały zatwierdzone.
 0169 Passwords need to be entered again after restart.=Hasło powinno zostać wpisane ponownie po restarcie.
+--
+0466 Interface=Interfejs
+0361 Add captions to toolbar buttons=Pokazuj opisy na pasku narzędzi
+0469 Show "Test archive" dialog=Pokaż opcję "testuj archiwum"
+0485 Open .tar.gz-like archives in single step=Otwieraj archiwa .tar.gz w jednym kroku
+0467 Unpack whole archive when running:=Rozpakuj całe archiwum podczas uruchamiania:
 --
 0421 Explorer integration=Integracja z Explorer'em
 0422 Enable context menu in Explorer=Włącz menu kontekstowe
@@ -353,7 +359,7 @@ Settings dialog
 0424 Enable individual commands:=Włącz poszczególne komendy
 --
 0388 Info=Informacje
-0389 Largest contiguous free memblock:=Największy graniczący wolny blok pamięci:
+0461 Largest address space block:=Największa przestrzeń adresowania:
 
 
 Logfiles
@@ -365,6 +371,10 @@ Checking for updates
 0296 Cannot open %1. Do you want to check the page with browser?=Nie można otworzyć %1. Czy chcesz otworzyć tą stronę w przeglądarce?
 0297 Nothing new at %1=Nie znaleziono nic nowego na %1
 0298 Found new information at %1! Open the page with browser?=Znaleziono nowe informacje na %1! Otworzyć stronę w przeglądarce?
+
+About dialog
+0459 High-performance archiver=Wysoko wydajnościowy archiwer
+0460 Free as well for commercial as for non-commercial use=Darmowy zarówno do komercyjnych jak i prywatnych zastosowań
 
 
 === Profile settings ============================================================
@@ -445,6 +455,7 @@ Progress indicator
 0052 &Background=Praca w tle
 0053 &Pause=Pauza
 0054 &Continue=Kontynuuj
+0470 &Close=&Zamknij
 
 File overwrite dialog
 0078 Confirm File Replace=Potwierdź zamianę plików
@@ -510,6 +521,13 @@ Archive comment dialog
 0384 %2 WARNINGS WHILE REPAIRING ARCHIVE %1=OSTRZEŻENIA %2 PODCZAS NAPRAWIANIA ARCHIWUM
 
 
+=== Console messages ====================================================
+0480 Compressing %1=Kompresowanie %1
+0481 Testing %1=Testowanie %1
+0482 Extracting %1=Rozpakowywanie %1
+0483 Skipping %1=Omijanie %1
+
+
 === Error messages =======================================================
 0316 ERROR: %1=BŁĄD: %1
 0317 WARNING: %1=UWAGA: %1
@@ -532,7 +550,6 @@ Archive comment dialog
 0330 can't read directory "%1"=nie można odczytać katalogu "%1"
 0331 can't get info about file "%1"=nie można odczytać informacji o pliku "%1"
 0332 can't open file "%1"=nie można otworzyć pliku "%1"
-0333 CRC error in file "%1"=błąd CRC w pliku "%1"
 0334 bad section %1 in %2=uszkodzony fragment %1 w %2
 0455 Operation terminated by user!=Operacja przerwana przez użytkownika!
 0456 Program terminated by user!=Program zamknięty przez użytkownika!
@@ -562,6 +579,13 @@ Archive comment dialog
 0358 last block of archive is not footer block=ostatni blok archiwum nie jest poprawnym zakończeniem
 0377 command "%1" shouldn't have additional arguments=polecenie "%1" nie powinno mieć dodatkowym argumentów
 0378 bad name or parameters in encryption algorithm %1=zła nazwa lub parametr w algorytmie kodowania
+0472 Unsupported compression method for "%1".=Nieobsługiwana metoda kompresji pliku „%1”.
+0473 Data error in "%1". File is broken.=Błąd danych w „%1”. Plik jest uszkodzony.
+0474 Data error in encrypted file "%1". Wrong password?=Błąd danych w zaszyfrowanym pliku „%1”. Nieprawidłowe hasło?
+0475 CRC failed in "%1". File is broken.=CRC nie powiodła się dla „%1”. Plik jest uszkodzony.
+0476 CRC failed in encrypted file "%1". Wrong password?=CRC nie powiodła się dla zaszyfrowanego pliku „%1”. Nieprawidłowe hasło?
+0477 Unknown error=Nieznany błąd
+0478 can't modify non-FreeArc archive=nie można zmodyfikować archiwum w formacie innym niż FreeArc
 
 Errors returned by compression methods
 0365 general (de)compression error in %1=ogólny błąd podczas (de)kompresji w %1
@@ -663,6 +687,10 @@ Add dialog
 --
 1222 Include only files=Zaznacz tą opcję, jeżeli chcesz kompresować tylko wybrany typ plików (na przykład *.txt).
 1223 Exclude files=Zaznacz tą opcję, jeżeli nie chcesz umieszczać w archiwum wybranego typu plików.
+
+--Settings dialog
+1467 Unpack whole archive when running:=Rozpakuj całe archiwum podczas uruchamiania:
+1469 Show "Test archive" dialog=Pokazuj opcję "testuj archiwum"
 
 --Compression settings
 1113 Fast, low-memory decompression=Wyłącza wolne i pamięciożerne algorytmy. Poziom kompresji jednak jest o wiele słabszy.

@@ -45,7 +45,7 @@ int BCJ_X86_METHOD::compress (CALLBACK_FUNC *callback, void *auxdata)
 }
 
 // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия (функция, обратная к parse_BCJ_X86)
-void BCJ_X86_METHOD::ShowCompressionMethod (char *buf)
+void BCJ_X86_METHOD::ShowCompressionMethod (char *buf, bool purify)
 {
   sprintf (buf, "exe");
 }

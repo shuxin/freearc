@@ -63,6 +63,22 @@ struct Results {
 #define GetSomeTime() (r.use_cpu_time? GetThreadCPUTime() : GetGlobalTime())
 #endif
 
+
+// Temporary :)
+int compress_all_at_once = 0;
+#define EnvSetConsoleTitle
+#define delete_file(name)  (remove(name))
+#define file_exists(name)  (access(name,0) == 0)
+#define dir_exists(name)   (dir_exists0(name))
+static inline int dir_exists0 (const char *name)
+{
+  struct _stat st;
+  _stat(name,&st);
+  return (st.st_mode & S_IFDIR) != 0;
+}
+//
+
+
 // Callback function called by compression routine to read/write data.
 // Also it's called by the driver to init/shutdown its processing
 int ReadWriteCallback (const char *what, void *buf, int size, void *r_)

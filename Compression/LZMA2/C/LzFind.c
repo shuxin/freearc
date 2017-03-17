@@ -1,5 +1,9 @@
 /* LzFind.c -- Match finder for LZ algorithms
-2009-04-22 : Igor Pavlov : Public domain */
+(c) 2009-04-22 Igor Pavlov
+(c) 2008-2009 Bulat Ziganshin
+This code made available under GPL license.
+For a commercial license write to Bulat.Ziganshin@gmail.com
+*/
 
 #include <string.h>
 
@@ -146,6 +150,7 @@ void MatchFinder_Construct(CMatchFinder *p)
   p->bufferBase = 0;
   p->directInput = 0;
   p->hash = 0;
+  p->son = 0;
   MatchFinder_SetDefaultSettings(p);
 
   for (i = 0; i < 256; i++)
@@ -161,7 +166,7 @@ void MatchFinder_Construct(CMatchFinder *p)
 static void MatchFinder_FreeThisClassMemory(CMatchFinder *p, ISzAlloc *alloc)
 {
   alloc->Free(alloc, p->hash);
-  if (p->son)  alloc->Free(alloc, p->son);
+  alloc->Free(alloc, p->son);
   p->hash = 0;
   p->son  = 0;
 }
@@ -190,7 +195,9 @@ int MatchFinder_Create(CMatchFinder *p, UInt32 historySize, UInt32 hashSize,
     MatchFinder_Free(p, alloc);
     return 0;
   }
-  if (p->btMode == MF_HashTable)
+  if (compress_all_at_once)
+    sizeReserv  =  4096;  //just for case
+  else if (p->btMode == MF_HashTable)
     sizeReserv  =  historySize <= 768*mb           ?  historySize/4  :  historySize/8;
   else
     sizeReserv  =  historySize <= ((UInt32)2 << 30)?  historySize/2  :  historySize/4;

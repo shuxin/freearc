@@ -79,7 +79,7 @@ bool CUI::AllowProcessing (char cmd, int silent, FILENAME arcname, char* comment
 char CUI::AskOverwrite (FILENAME filename, uint64 size, time_t modified)
 {
   char help[] = "Valid answers: Y - yes, N - no, A - overwrite all, S - skip all, Q - quit\n";
-  again: printf ("Overwrite %s (y/n/a/s/q) ? ", filename);
+  again: printf ("Overwrite %s ?\n(Y)es / (N)o / (A)lways / (S)kip all / (Q)uit? ", filename);
   char answer[256];  gets (answer);  *answer = tolower(*answer);
   if (strlen(answer)!=1 || !strchr("ynasq", *answer))  {printf (help);  goto again;}
   if (*answer=='q') {printf ("Extraction aborted\n");  exit(1);}
@@ -107,7 +107,7 @@ void CUI::ListFooter (COMMAND &command)
       printf ("----------------------------------------\n");
   else
       printf ("-----------------------------------------------------------------------------\n");
-  printf ("%.0lf files, %.0lf bytes, %.0lf compressed", double(total_files), double(total_bytes), double(total_packed));
+  printf ("%.0lf files, %.0lf bytes, %.0lf compressed\n", double(total_files), double(total_bytes), double(total_packed));
 }
 
 void CUI::ListFiles (DIRECTORY_BLOCK *dirblock, COMMAND &command)

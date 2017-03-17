@@ -104,7 +104,7 @@ SRes LzmaDec_AllocateUsingProperties(CLzmaDec *p, const CLzmaProps propNew, ISzA
 
 // Input buffer size for decompressor
 uint RangeDecoderBufferSize (uint dict)
-{return compress_all_at_once? dict : LARGE_BUFFER_SIZE;}     //// dict*1.1?
+{return compress_all_at_once? dict+(dict/8) : LARGE_BUFFER_SIZE;}
 
 
 
@@ -132,8 +132,19 @@ typedef struct
   int errcode;
 } CallbackOutStream;
 
+typedef struct
+{
+  SRes (*Progress)(void *p, UInt64 inSize, UInt64 outSize);
+    /* Returns: result. (result != SZ_OK) means break.
+       Value (UInt64)(Int64)-1 for size means unknown value. */
+  UInt64 lastInSize, lastOutSize;
+  CALLBACK_FUNC *callback;
+  void *auxdata;
+  int errcode;
+} CompressProgress;
 
-SRes CallbackRead(void *p, void *buf, size_t *size)
+
+SRes CallbackRead (void *p, void *buf, size_t *size)
 {
   CallbackInStream *s = (CallbackInStream*) p;
   SRes res;
@@ -150,14 +161,22 @@ SRes CallbackRead(void *p, void *buf, size_t *size)
   else           {*size = 0;   s->errcode = res; return res;}
 }
 
-size_t CallbackWrite(void *p, const void *buf, size_t size)
+size_t CallbackWrite (void *p, const void *buf, size_t size)
 {
   CallbackOutStream *s = (CallbackOutStream*) p;
   int res = s->callback ("write", (void*)buf, size, s->auxdata);
-  if (res < 0) {s->errcode = res; return 0;}
-  else         return size;
+  if (res < 0)   {s->errcode = res; return 0;}
+  else           return size;
 }
 
+SRes CallbackProgress (void *p, UInt64 inSize, UInt64 outSize)
+{
+  CompressProgress *s = (CompressProgress*) p;
+  UInt64 sizes[2] = {inSize - s->lastInSize, outSize - s->lastOutSize};
+  s->lastInSize = inSize;  s->lastOutSize = outSize;
+  s->errcode = s->callback ("progress", sizes, 0, s->auxdata);
+  return s->errcode==FREEARC_OK? SZ_OK : SZ_ERROR_PROGRESS;
+}
 
 
 int lzma_compress  ( int dictionarySize,
@@ -172,8 +191,9 @@ int lzma_compress  ( int dictionarySize,
                      CALLBACK_FUNC *callback,
                      void *auxdata )
 {
-  CallbackInStream  inStream;    inStream.Read  = CallbackRead;    inStream.callback = callback;   inStream.auxdata = auxdata;   inStream.errcode = FREEARC_OK;  inStream.first_read = False;
-  CallbackOutStream outStream;  outStream.Write = CallbackWrite;  outStream.callback = callback;  outStream.auxdata = auxdata;  outStream.errcode = FREEARC_OK;
+  CallbackInStream  inStream;    inStream.Read  = CallbackRead;      inStream.callback = callback;   inStream.auxdata = auxdata;   inStream.errcode = FREEARC_OK;  inStream.first_read = TRUE;
+  CallbackOutStream outStream;  outStream.Write = CallbackWrite;    outStream.callback = callback;  outStream.auxdata = auxdata;  outStream.errcode = FREEARC_OK;
+  CompressProgress  progress; progress.Progress = CallbackProgress;  progress.callback = callback;   progress.auxdata = auxdata;   progress.errcode = FREEARC_OK;  progress.lastInSize = 0;  progress.lastOutSize = 0;
 
   CLzmaEncHandle enc;
   SRes res;
@@ -204,14 +224,13 @@ int lzma_compress  ( int dictionarySize,
   if (enc == 0)   return FREEARC_ERRCODE_NOT_ENOUGH_MEMORY;
   res = LzmaEnc_SetProps(enc, &props);
   if (res == SZ_OK)
-    res = LzmaEnc_Encode(enc, (ISeqOutStream*)&outStream, (ISeqInStream*)&inStream, NULL, &g_Alloc, &g_Alloc);
+    res = LzmaEnc_Encode(enc, (ISeqOutStream*)&outStream, (ISeqInStream*)&inStream, (ICompressProgress*)&progress, &g_Alloc, &g_Alloc);
   LzmaEnc_Destroy(enc, &g_Alloc, &g_Alloc);
 
-  // Вернуть код ошибки входного/выходного потока или перекодировать код ошибки из 7z в fa
-  if (inStream.errcode)
-    return inStream.errcode;
-  if (outStream.errcode)
-    return outStream.errcode;
+  // Вернуть код ошибки из колбэка или перекодировать код ошибки из 7z в fa
+  if ( inStream.errcode != FREEARC_OK)    return  inStream.errcode;
+  if (outStream.errcode != FREEARC_OK)    return outStream.errcode;
+  if ( progress.errcode != FREEARC_OK)    return  progress.errcode;
   return SRes_to_FreeArc(res);
 }
 
@@ -246,7 +265,7 @@ int lzma_decompress( int dictionarySize,
   CLzmaDec _state;
   LzmaDec_Construct(&_state);
   SRes res = LzmaDec_AllocateUsingProperties(&_state, LzmaProps, &g_Alloc);
-  if (res != SZ_OK)  {errcode = SRes_to_FreeArc(res); goto freeInBuf;}
+  if (res != SZ_OK)  goto freeInBuf;
   LzmaDec_Init(&_state);
 
   for (;;)
@@ -255,37 +274,40 @@ int lzma_decompress( int dictionarySize,
     {
       // Read whole buffer in the first call if compress_all_at_once==TRUE
       _inSize = errcode = first_read || !compress_all_at_once? callback ("read", _inBuf, _inBufferSize, auxdata) : 0;
+      first_read = FALSE;
       if (errcode < 0)  break;
       _inPos = 0;              // current position inside input data
-      first_read = FALSE;
     }
 
     SizeT oldDicPos = _state.dicPos;
-    SizeT curSize = mymin(_state.dicBufSize - oldDicPos, LARGE_BUFFER_SIZE);     // Write outdata in 256kb chunks
+    SizeT curSize = _state.dicBufSize - oldDicPos;
+    if (!compress_all_at_once)
+      curSize = mymin(curSize, LARGE_BUFFER_SIZE);     // Write outdata in 256kb chunks
 
     ELzmaFinishMode finishMode = LZMA_FINISH_ANY;
     SizeT inSizeProcessed = _inSize - _inPos;
     ELzmaStatus status;
-    SRes res = LzmaDec_DecodeToDic(&_state, oldDicPos + curSize, _inBuf + _inPos, &inSizeProcessed, finishMode, &status);
+    res = LzmaDec_DecodeToDic(&_state, oldDicPos + curSize, _inBuf + _inPos, &inSizeProcessed, finishMode, &status);
 
     _inPos += (UInt32)inSizeProcessed;
     SizeT outSizeProcessed = _state.dicPos - oldDicPos;
 
-    errcode = callback ("write", _state.dic+oldDicPos, _state.dicPos-oldDicPos, auxdata);
-    if (res != 0)    {errcode = SRes_to_FreeArc(res); break;}
-    if (errcode < 0)  break;
+    WRITE(_state.dic+oldDicPos, _state.dicPos-oldDicPos);
+    PROGRESS(inSizeProcessed, outSizeProcessed);
+    if (res != SZ_OK)  goto finished;
 
-    bool finished = (inSizeProcessed == 0 && outSizeProcessed == 0);
-    if (finished)  {errcode = SRes_to_FreeArc(status == LZMA_STATUS_FINISHED_WITH_MARK ? SZ_OK : SZ_ERROR_DATA); break;}
+    bool finished = compress_all_at_once || (inSizeProcessed == 0 && outSizeProcessed == 0);
+    if (finished)  {errcode = SRes_to_FreeArc(compress_all_at_once || status == LZMA_STATUS_FINISHED_WITH_MARK ? SZ_OK : SZ_ERROR_DATA); break;}
 
     if (_state.dicPos == _state.dicBufSize)
       _state.dicPos = 0;
   }
 
+finished:
   LzmaDec_Free(&_state, &g_Alloc);
 freeInBuf:
   MyFree(_inBuf);
-  return errcode;
+  return (res!=SZ_OK? SRes_to_FreeArc(res) : errcode);
 }
 
 
@@ -312,6 +334,13 @@ LZMA_METHOD::LZMA_METHOD()
   posStateBits      = 2;
   litContextBits    = 3;
   litPosBits        = 0;
+}
+
+// Универсальный метод, отвечает на запрос "has_progress?"
+int LZMA_METHOD::doit (char *what, int param, void *data, CALLBACK_FUNC *callback)
+{
+    if (strequ (what, "has_progress?"))  return 1;               // Да, этот алгоритм поддерживает отчёт о прогрессе упаковки
+    else                                 return COMPRESSION_METHOD::doit (what, param, data, callback);  // Передать остальные вызовы родительской процедуре
 }
 
 // Функция распаковки
@@ -366,7 +395,7 @@ int LZMA_METHOD::compress (CALLBACK_FUNC *callback, void *auxdata)
 
 
 // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_LZMA)
-void LZMA_METHOD::ShowCompressionMethod (char *buf)
+void LZMA_METHOD::ShowCompressionMethod (char *buf, bool purify)
 {
   char DictionaryStr[100], HashStr[100], fcStr[100], pbStr[100], lcStr[100], lpStr[100], algStr[100];
   showMem (dictionarySize, DictionaryStr);
@@ -418,15 +447,18 @@ MemSize LZMA_METHOD::GetCompressionMem (void)
   props.writeEndMark = 1;
   LzmaEncProps_Normalize(&props);
 
-  uint64 reservedArea = props.dictSize/(matchFinder==kHT4? 4 : 2);
-  uint64 sons         = matchFinder==kHT4? 0
-                      : matchFinder==kHC4? 1
-                      :                    2;
+  uint64 reservedArea = compress_all_at_once? 4096  //just for case
+                      : matchFinder==kHT4?    (props.dictSize <= 768*mb           ?  props.dictSize/4  :  props.dictSize/8)
+                      :                       (props.dictSize <= ((UInt32)2 << 30)?  props.dictSize/2  :  props.dictSize/4);
+  uint64 sons = matchFinder==kHT4? 0
+              : matchFinder==kHC4? 1
+              :                    2;
   // Возращаем значение не более 4gb-1
-  return MemSize (mymin (MemSize(-1), uint64(props.dictSize) + reservedArea + props.hashSize + sons*sizeof(CLzRef)*props.dictSize + 1*mb));
+  return MemSize (mymin (MemSize(-1), uint64(props.dictSize) + reservedArea + props.hashSize + sons*sizeof(CLzRef)*props.dictSize + RC_BUF_SIZE(props.dictSize) + 1*mb));
 }
 
 // Вычисляет словарь, использующий не более mem памяти для сжатия заданным LZMA_METHOD
+// Метод не очень точен - он не учитывает compress_all_at_once и прочие детали (см. GetCompressionMem)
 MemSize calcDictSize (LZMA_METHOD *p, MemSize mem)
 {
   double mem4 = mymax (double(mem) - BUFFER_SIZE, 0);

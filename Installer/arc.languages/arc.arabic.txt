@@ -19,16 +19,53 @@
 
 Language name in english and mother tongue
 0000 Language=Arabic (العربية)
-0159 Copyright=Automatic translation from 7-Zip language file.\nPlease edit it to finish translation.\nOriginal copyrights:\nTranslated by SolVanDyck AKA SoLo
+0159 Translated by=Automatic translation from 7-Zip language file.\nPlease edit it to finish translation.\nOriginal copyrights:\nTranslated by SolVanDyck AKA حسن بنات
 
 Language-specific URLs relative to http://freearc.org/ and helpfiles
 Filled only for languages providing their own translations
-0254 Homepage (URL, not translation!)=الصفحة الرئيسية
-0255 News page (URL, not translation!)=صفحة أخبارِ
-0371 Forum page (URL, not translation!)=صفحة منتدى
-0372 Wiki page (URL, not translation!)=صفحة Wiki
-0256 Helpfile (URL, not translation!)=االملف لمساعدة
-0257 Command-line help (URL, not translation!)=مساعدة خَطِّ قيادةِ
+0254 Homepage (URL, not translation!)=??
+0255 News page (URL, not translation!)=??
+0457 Forum page (URL, not translation!)=??
+0458 Wiki page (URL, not translation!)=??
+0256 Helpfile (URL, not translation!)=??
+0257 Command-line help (URL, not translation!)=??
+
+
+=== Explorer context menu =======================================================
+0391 Add to "%s"=??
+0392 Compress the selected files using FreeArc=??
+0393 Add to SFX "%s"=??
+0394 Compress the selected files into SFX using FreeArc=??
+0395 Add to archive...=??
+0396 Compress the selected files using FreeArc via dialog=??
+--
+0397 Open with FreeArc=??
+0398 Open the selected archive(s) with FreeArc=??
+0399 Extract to "%s"=??
+0400 Extract the selected archive(s) to new folder=??
+0401 Extract here=??
+0402 Extract the selected archive(s) to the same folder=??
+0403 Extract...=??
+0404 Extract the selected archive(s) via dialog=??
+0405 Test=??
+0406 Test the selected archive(s)=??
+--
+0407 Convert to SFX=??
+0408 Convert the selected archive(s) to SFX=??
+0409 Convert from SFX=??
+0410 Convert the selected SFX(es) to normal archive(s)=??
+--
+0411 Modify...=??
+0412 Modify the selected archives via dialog=??
+0413 Join...=??
+0414 Join the selected archives via dialog=??
+--
+0415 Convert to .arc=??
+0416 Convert the selected archive(s) to FreeArc format=??
+0417 Convert to .arc SFX=??
+0418 Convert the selected archive(s) to FreeArc SFX=??
+0419 Convert to .arc...=??
+0420 Convert the selected archive(s) to FreeArc format via dialog=??
 
 
 === Menu ========================================================================
@@ -77,6 +114,8 @@ Tools menu/toolbar
 0294 Recompress files in archive=تَدْخلُ إعادة ضغطِ أرشيفاً
 0270 Convert to SFX=حوّلْ إلى إس إف إكس
 0271 Convert archive to SFX=تغييرِ أرشيف إلى إس إف إكس
+0426 Convert to FreeArc=??
+0427 Convert foreign archive to FreeArc format=??
 0272 Encrypt=التعمية
 0273 Encrypt archive contents=شفّرْ محتويات الأرشيفِ
 0274 Protect=إحمَ
@@ -159,6 +198,8 @@ Add dialog
 0149 Join all archives=??
 0150 Join %1 with another archive=??
 0151 Join %2 archives=??
+0428 Convert %1 to FreeArc format=??
+0429 Convert %2 archives to FreeArc format=??
 ---------
 0182 Main=??
 0131 Output archive:=‮الأر&شيف:
@@ -251,6 +292,7 @@ Extract dialog
 0021 Select output directory=حدد موضع المفات المستخرجة.
 0014 Append archive name to the output directory=??
 --Other
+0425 Keep broken extracted files=??
 0072 Additional options:=??
 
 
@@ -277,6 +319,13 @@ Archive information dialog
 --
 0097 Encryption algorithms:=طريقة التعمية:
 0098 Archive comment:=‮ت&عليق:
+---
+0449 Solid blocks=??
+0450 Position=??
+0451 Size=??
+0452 Compressed=??
+0453 Files=??
+0454 Method=??
 
 
 Settings dialog
@@ -290,11 +339,18 @@ Settings dialog
 0166 Logfile:=??
 0292 View=است&عرض
 0167 Select logfile=??
+0447 Temporary directory:=??
+0448 Select directory for temporary files=??
 0172 Associate FreeArc with .arc files=‮اربط ‪FreeArc‬ بامتدادات الأسماء التالية .arc
 0361 Add captions to toolbar buttons=??
 0370 Watch for new versions via Internet=??
 0168 You should restart FreeArc in order for a language settings to take effect.=??
 0169 Passwords need to be entered again after restart.=??
+--
+0421 Explorer integration=??
+0422 Enable context menu in Explorer=??
+0423 Make it cascaded=??
+0424 Enable individual commands:=??
 --
 0388 Info=??
 0389 Largest contiguous free memblock:=??
@@ -360,12 +416,9 @@ Many dialogs
 0081 &Cancel=أل&غِ
 0363 &Select=??
 0364 &Close=أغل&ق
+0432 &Detach=??
 
 Progress indicator
---Buttons
-0052 &Background=ال&خلفية
-0053 &Pause=&جمِّد
-0054 &Continue=&واصل
 --Labels
 0056 Files=‮ملفات:
 0057 Total files=??
@@ -386,6 +439,12 @@ Progress indicator
 0385 Scanning archive for damages=??
 0386 Protecting archive from damages=??
 0387 Recovering archive=??
+--Extra options
+0446 Keep window on top=??
+--Buttons
+0052 &Background=ال&خلفية
+0053 &Pause=&جمِّد
+0054 &Continue=&واصل
 
 File overwrite dialog
 0078 Confirm File Replace=أكد قبل استبدال ملف
@@ -408,19 +467,23 @@ Archive comment dialog
 
 
 === Infoline messages ====================================================
-0228 Deleting from %1=??
+0439 Listing archive %1=??
+0445 SUCCESFULLY LISTED %1=??
+0442 %2 WARNINGS WHILE LISTING %1=??
+
+0435 Deleting files from archive %1=??
 0229 FILES SUCCESFULLY DELETED FROM %1=??
 0230 %2 WARNINGS WHILE DELETING FROM %1=??
 
-0231 Testing %1=??
+0440 Testing archive %1=??
 0232 SUCCESFULLY TESTED %1=??
 0233 %2 WARNINGS WHILE TESTING %1=??
 
-0234 Extracting files from %1=??
+0441 Extracting files from archive %1=??
 0235 FILES SUCCESFULLY EXTRACTED FROM %1=??
 0236 %2 WARNINGS WHILE EXTRACTING FILES FROM %1=??
 
-0237 Modifying %1=??
+0433 Modifying archive %1=??
 0238 SUCCESFULLY MODIFIED %1=??
 0239 %2 WARNINGS WHILE MODIFYING %1=??
 
@@ -428,9 +491,13 @@ Archive comment dialog
 0241 SUCCESFULLY JOINED ARCHIVES TO %1=??
 0242 %2 WARNINGS WHILE JOINING ARCHIVES TO %1=??
 
-0243 Adding to %1=??
-0244 FILES SUCCESFULLY ADDED TO %1=??
-0245 %2 WARNINGS WHILE ADDING TO %1=??
+0437 Creating archive %1=??
+0443 SUCCESFULLY CREATED %1=??
+0434 %2 WARNINGS WHILE CREATING %1=??
+
+0438 Updating archive %1=??
+0444 SUCCESFULLY UPDATED %1=??
+0436 %2 WARNINGS WHILE UPDATING %1=??
 
 0299 Lock archive(s)?=??
 0300 Locking archive %1=??
@@ -467,8 +534,8 @@ Archive comment dialog
 0332 can't open file "%1"=??
 0333 CRC error in file "%1"=??
 0334 bad section %1 in %2=??
-0335 operation terminated!=??
-0336 program terminated!=??
+0455 Operation terminated by user!=??
+0456 Program terminated by user!=??
 0337 no files, erasing empty archive=??
 0338 skipped %1 fake files=??
 0339 bad password for archive %1=??
@@ -500,14 +567,18 @@ Errors returned by compression methods
 0365 general (de)compression error in %1=??
 0366 invalid compression method or parameters in %1=??
 0367 can't allocate memory required for (de)compression in %1=??
-0368 I/O error in compression algorithm %1=??
 0369 bad compressed data in %1=??
+0430 read error (bad media?) in compression algorithm %1=??
+0431 write error (disk full?) in compression algorithm %1=??
 
 
 === Standard profiles ====================================================
 Compression
 0771 Maximum=??
 0772 Maximum with fast decompression=??
+0773 Ultra (require 2 gb RAM for decompression)=??
+0774 Maximum (require 1 gb RAM for decompression)=??
+0775 Best asymmetric (with fast decompression)=??
 0752 No compression=??
 
 Encryption

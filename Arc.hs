@@ -29,7 +29,7 @@ module Main where
 
 import Prelude hiding (catch)
 import Control.Concurrent
-import Control.Exception
+import Control.OldException
 import Control.Monad
 import Data.List
 import System.Mem
@@ -65,7 +65,7 @@ doMain args  = do
   setUncaughtExceptionHandler handler
   setCtrlBreakHandler $ do          -- Организуем обработку ^Break
   ensureCtrlBreak "resetConsoleTitle" (resetConsoleTitle) $ do
-  args <- processCmdfile args
+  args <- processCmdfile args       -- Заменить @cmdfile в командной строке на его содержимое
   luaLevel "Program" [("command", args)] $ do
 #ifdef FREEARC_GUI
   parseGUIcommands run args $ \args -> do  -- Обработка GUI-специфичных вариаций командной строки

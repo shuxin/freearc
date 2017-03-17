@@ -87,7 +87,7 @@ struct COMPRESSION_METHOD
   virtual int compress   (CALLBACK_FUNC *callback, void *auxdata) = 0;
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к ParseCompressionMethod)
-  virtual void ShowCompressionMethod (char *buf) = 0;
+  virtual void ShowCompressionMethod (char *buf, bool purify) = 0;
 
   // Информация о памяти, необходимой для упаковки/распаковки,
   // размере словаря (то есть насколько далеко заглядывает алгоритм в поиске похожих данных - для lz/bs схем),

@@ -1,20 +1,24 @@
 ::Compile all components
 cd ..\Unarc
 make
+upx --lzma -9 *.sfx
 ::upx -d *.sfx
 ::upx --ultra-brute *.sfx
-upx --lzma -9 *.sfx
 cd ..
 
-call compile-O2.cmd
-call compile-GUI-O2.cmd
+cmd /c compile-O2.cmd
+cmd /c compile-GUI-O2.cmd
 
 cd Compression
-del *.obj facompress.dll
-call compile-dll.cmd
+del facompress*.dll
+cmd /c compile-dll.cmd
 
 cd ..\ArcShellExt
-call compile.cmd
-call compile-64.cmd
+cmd /c compile-32.cmd
+cmd /c compile-64.cmd
 
-cd ..\Installer
+cd Register
+cmd /c compile.cmd
+cmd /c compile64.cmd
+
+cd ..\..\Installer

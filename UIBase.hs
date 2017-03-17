@@ -7,7 +7,7 @@ module UIBase where
 import Prelude hiding (catch)
 import Control.Monad
 import Control.Concurrent
-import Control.Exception
+import Control.OldException
 import Data.Char
 import Data.IORef
 import Foreign
@@ -79,7 +79,7 @@ putHeader                 =  unsafePerformIO$ init_once
 ref_w0                    =  unsafePerformIO$ newIORef$ error "undefined UI::ref_w0"         :: IORef Int
 ref_arcExist              =  unsafePerformIO$ newIORef$ error "undefined UI::ref_arcExist"   :: IORef Bool
 -- Текущая стадия выполнения команды или имя файла из uiFileinfo
-uiMessage                 =  unsafePerformIO$ newIORef$ ""
+uiMessage                 =  unsafePerformIO$ newIORef$ ("","")
 -- |Счётчик просканированных файлов
 files_scanned             =  unsafePerformIO$ newIORef$ (0::Integer)
 
@@ -126,16 +126,17 @@ indicatorThread secs output =
   backgroundThread secs $ \updateMode -> do
     whenM (val aProgressIndicatorEnabled) $ do
       operationTerminated' <- val operationTerminated
-      (indicator, indType, arcname, direction, bRational :: Rational, bytes', total') <- val aProgressIndicatorState
+      (indicator, indType, arcname, winTitleMsg, bRational :: Rational, bytes', total') <- val aProgressIndicatorState
       let b = round bRational  -- we use Rational in order to save decimal fractions (results of 90%/10% counting rule)
       when (indicator /= NoIndicator  &&  not operationTerminated') $ do
         bytes <- bytes' b;  total <- total'
+        bytes <- return (bytes `min` total)   -- bytes не должно превышать total
         -- Отношение объёма обработанных данных к общему объёму
         let processed = total>0 &&& (fromIntegral bytes / fromIntegral total :: Double)
         secs <- return_real_secs
         sec0 <- val indicator_start_real_secs
         let remains  = if processed>0.001  then " "++showHMS(sec0+(secs-sec0)/processed-secs)  else ""
-            winTitle = "{"++trimLeft p++remains++"}" ++ direction ++ takeFileName arcname
+            winTitle = "{"++trimLeft p++remains++"} " ++ (format winTitleMsg (takeFileName arcname))
             p        = percents indicator bytes total
         output updateMode indicator indType winTitle b bytes total processed p
 
@@ -189,7 +190,7 @@ ratio3 count total =  case (show$ count*1000 `div` total) of
 -- |Вывести число, отделяя тысячи, миллионы и т.д.: "1.234.567"
 show3 :: (Show a) => a -> [Char]
 show3 = reverse.xxx.reverse.show
-          where xxx (a:b:c:d:e) = a:b:c:'.': xxx (d:e)
+          where xxx (a:b:c:d:e) = a:b:c:',': xxx (d:e)
                 xxx a = a
 
 {-# NOINLINE ratio2 #-}
@@ -327,11 +328,11 @@ msgFinishGUI cmd arcExist warnings =
                   (_,    RECOVER_CMD, _)      ->  "0384 %2 WARNINGS WHILE REPAIRING ARCHIVE %1"
 
 msgDo cmd    =  case (cmdType cmd) of
-                  ADD_CMD     -> "Compressing "
-                  TEST_CMD    -> "Testing "
-                  EXTRACT_CMD -> "Extracting "
+                  ADD_CMD     -> "0480 Compressing %1"
+                  TEST_CMD    -> "0481 Testing %1"
+                  EXTRACT_CMD -> "0482 Extracting %1"
 
-msgFile      =  ("  "++).msgDo
+msgSkipping  =                   "0483 Skipping %1"
 
 msgDone cmd  =  case (cmdType cmd) of
                   ADD_CMD     -> "Compressed "
@@ -358,8 +359,7 @@ show_bytes3 n = show3 n ++ " bytes"
 
 {-
   Структура UI:
-  - один процесс, получающий информацию от упаковки/распаковки и определяющий структуру
-      взаимодействия с UI:
+  - один процесс, получающий информацию от упаковки/распаковки и определяющий структуру взаимодействия с UI:
         ui_PROCESS pipe = do
           (StartCommand cmd) <- receiveP pipe
             (StartArchive cmd) <- receiveP pipe
@@ -369,5 +369,5 @@ show_bytes3 n = show3 n ++ " bytes"
             (EndArchive) <- receiveP pipe
           (EndCommand) <- receiveP pipe
          (EndProgram) <- receiveP pipe
-      Этот процесс записывает текущее состояние UI в SampleVar
+    Этот процесс записывает текущее состояние UI в SampleVar
 -}

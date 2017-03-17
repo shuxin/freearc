@@ -22,13 +22,20 @@ public:
   // Конструктор, присваивающий параметрам метода сжатия значения по умолчанию
   REP_METHOD();
 
+  // Универсальный метод: возвращаем различные простые характеристики метода сжатия
+  virtual int doit (char *what, int param, void *data, CALLBACK_FUNC *callback)
+  {
+      if      (strequ (what,"SparseDecompression?"))  return 1;
+      else return COMPRESSION_METHOD::doit (what, param, data, callback);
+  }
+
   // Функции распаковки и упаковки
   virtual int decompress (CALLBACK_FUNC *callback, void *auxdata);
 #ifndef FREEARC_DECOMPRESS_ONLY
   virtual int compress   (CALLBACK_FUNC *callback, void *auxdata);
 
   // Записать в buf[MAX_METHOD_STRLEN] строку, описывающую метод сжатия и его параметры (функция, обратная к parse_REP)
-  virtual void ShowCompressionMethod (char *buf);
+  virtual void ShowCompressionMethod (char *buf, bool purify);
 
   // Получить/установить объём памяти, используемой при упаковке/распаковке, размер словаря или размер блока
   virtual MemSize GetCompressionMem     (void);

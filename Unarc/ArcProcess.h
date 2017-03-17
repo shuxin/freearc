@@ -18,6 +18,7 @@ public:
   BOOL included;            //   Текущий файл включён в обработку или мы просто пропускаем его?
   int extractUntil;         //   Номер последнего файла, который нужно извлечь из этого солид-блока
   MYFILE outfile;           // Файл, извлекаемый из архива
+  MYFILE auxfile;           // Вспомогательная переменная для хранения имени файла в том виде как оно выводится на экран
   char fullname[MY_FILENAME_MAX*4]; // Полное имя распаковываемого сейчас файла
   FILESIZE bytes_to_write;  // Сколько байт в текущем файле осталось записать
   FILESIZE writtenBytes;    // Сколько байт всего было распаковано в текущем архиве
@@ -40,6 +41,7 @@ public:
   // Читает структуру архива и вызывает в зависимости от выполняемой команды
   // ListFiles для каждого блока каталога или ExtractFiles для каждого солид-блока
   PROCESS(COMMAND* _cmd, BASEUI* _UI);
+  void OpenArchive();
 
   // Процедура экстренного выхода
   void quit(int errcode);
@@ -60,15 +62,17 @@ void PROCESS::outfile_open (PASS pass)
   if (pass==SECOND_PASS && bytes_to_write==0)
     return;  // Directories and empty files were extracted in first pass
   included = cmd->accept_file (dir, curfile);
+  // Имя выходного файла (помимо каталога, указанного в -dp)
   char *xname = cmd->cmd=='e'? dir->name[curfile]
-                             : dir->fullname (curfile, fullname);
+                             : dir->fullname (curfile, fullname)  +  (strequ(cmd->arc_base_dir,"")?  0  :  strlen (cmd->arc_base_dir)+1);
   outfile.setname (xname);
 
   if (included && cmd->cmd!='t')
     if (dir->isdir[curfile])
       {if (cmd->cmd!='e')  BuildPathTo (outfile.filename), create_dir (outfile.filename);}
     else
-      {if (outfile.exists())
+      {bool outfile_exists = outfile.exists();
+       if (outfile_exists)
        {
          if (cmd->no)  included = FALSE;
          else if (!cmd->yes)
@@ -84,12 +88,16 @@ void PROCESS::outfile_open (PASS pass)
            }
          }
        }
-       if (included)  outfile.open (WRITE_MODE);}
+       if (included)  {if(outfile_exists)  outfile.remove_readonly_attrib();  outfile.open (WRITE_MODE);}
+      }
 
   if (pass==FIRST_PASS || dir->size[curfile]>0)   // Не писать повторно о распаковке каталогов/пустых файлов
     if (!(dir->isdir[curfile] && cmd->cmd!='x'))  // Не сообщать о тестировании каталогов ;)
-      if (!UI->ProgressFile (dir->isdir[curfile], included? (cmd->cmd=='t'? "Testing":"Extracting"):"Skipping", MYFILE(xname).displayname(), bytes_to_write))
+    {
+      auxfile.setname (dir->fullname (curfile, fullname));
+      if (!UI->ProgressFile (dir->isdir[curfile], included? (cmd->cmd=='t'? "Testing":"Extracting"):"Skipping", auxfile.displayname(), bytes_to_write))
         quit(FREEARC_ERRCODE_OPERATION_TERMINATED);
+    }
 }
 
 // Записать данные в выходной файл
@@ -150,49 +158,73 @@ int PROCESS::DecompressCallback (const char *what, void *buf, int size)
 }
 
 // Add "tempfile" to compressors chain if required
-char *AddTempfile (char *compressor)
+// При этом производятся достаточно хитроумные манипуляции чтобы REP и другие алгоритмы с SparseDecompression
+//   (способные разбивать память для распаковки на небольшие блоки) ограничивались лишь общим объёмом памяти, а остальные алгоритмы -
+//   размером наибольшего НЕПРЕРЫВНОГО свободного блока. В частности, GetTotalMemoryToAlloc() игнорирует блоки размером меньше 10 мб.
+//   Но гарантий надёжной работы этого алгоритма всё равно нет. В большинстве случаев он будет работать оптимально.
+char *AddTempfile (char *compressor, COMMAND* cmd)
 {
+  // Если compressor состоит всего из одного метода сжатия, то "tempfile" в него никак не добавишь :)
+  // noLimitMem отключает весь этот механизм, отсавляя ответственность на пользователе
+  if (!strchr (compressor,COMPRESSION_METHODS_DELIMITER)  ||  cmd->noLimitMem)
+    return NULL;
+
   char *c = (compressor = strdup_msg(compressor));
   int  compressor_len = strlen(compressor);
-  char *buffering = "tempfile";
+  char *BUFFERING = "tempfile";
   char PLUS[] = {COMPRESSION_METHODS_DELIMITER, '\0'};
 
   // Разобьём компрессор на отдельные алгоритмы и посчитаем расход памяти
   CMETHOD  cm[MAX_METHODS_IN_COMPRESSOR];
   uint64 memi[MAX_METHODS_IN_COMPRESSOR];
+  int   solid[MAX_METHODS_IN_COMPRESSOR];
   int N = split (compressor, COMPRESSION_METHODS_DELIMITER, cm, MAX_METHODS_IN_COMPRESSOR);
-  uint64 mem = 0;
+  uint64 mem = 0, block = 0;
   for (int i=0; i<N; i++)
-    mem += memi[i] = GetDecompressionMem(cm[i]);
-
-  // Maximum memory allowed to use
-  uint64 maxmem = mymin (GetPhysicalMemory()/4*3, GetMaxMemToAlloc());
-
-  // If memreqs are too large - add "tempfile" between methods
-  if (mem > maxmem)
   {
-    compressor = (char*) malloc_msg (compressor_len + (strlen(buffering)+strlen(PLUS))*(N-1) + 1);
-
-    strcpy(compressor, cm[0]);
-    mem=memi[0];
-
-    for (int i=1; i<N; i++)
-    {
-      // If total memreqs of methods after last tempfile >maxmem - add one more tempfile occurence
-      if (mem>0 && mem+memi[i]>maxmem)
-      {
-        strcat (compressor, PLUS);
-        strcat (compressor, buffering);
-        mem = 0;
-      }
-      strcat (compressor, PLUS);
-      strcat (compressor, cm[i]);
-      mem += memi[i];
-    }
-    free(c);  // we can't free c earlier since its space used by cm[i]
-    return compressor;
+    COMPRESSION_METHOD *method = ParseCompressionMethod (cm[i]);
+    if (!method)  goto abort;
+    mem += memi[i] = method->GetDecompressionMem();
+    solid[i] = method->doit ("SparseDecompression?", 0, NULL, NULL)<=0;  // ответ отрицательный или "not implemented"
+    if (solid[i])  block += memi[i];
+    free(method);
   }
 
+  {
+    // Maximum memory allowed to use and largest contiguous memory block
+    uint64 maxmem   = cmd->limitMem? cmd->limitMem  :  mymin (GetPhysicalMemory()/4*3, GetTotalMemoryToAlloc()-30*mb);
+    uint64 maxblock = cmd->limitMem? cmd->limitMem  :  GetMaxMemToAlloc();
+
+    // If memreqs are too large - add "tempfile" between methods
+    if (mem > maxmem  ||  block > maxblock)
+    {
+      compressor = (char*) malloc_msg (compressor_len + (strlen(BUFFERING)+strlen(PLUS))*(N-1) + 1);
+
+      strcpy(compressor, cm[0]);
+      mem = memi[0];
+      block = solid[0]? memi[0] : 0;
+
+      for (int i=1; i<N; i++)
+      {
+        // If total memreqs of methods after last tempfile >maxmem (or total reqs of methods requiring solid memory blocks >maxblock),
+        //   then add one more tempfile occurence
+        if (mem>0 && (mem+memi[i]>maxmem || (solid[i] && block+memi[i]>maxblock)))
+        {
+          strcat (compressor, PLUS);
+          strcat (compressor, BUFFERING);
+          mem = block = 0;
+        }
+        strcat (compressor, PLUS);
+        strcat (compressor, cm[i]);
+        mem += memi[i];
+        if (solid[i])  block += memi[i];
+      }
+      free(c);  // we can't free c earlier since its space used by cm[i]
+      return compressor;
+    }
+  }
+
+abort:
   free(c);
   return NULL;
 }
@@ -210,13 +242,13 @@ void PROCESS::ExtractFiles (DIRECTORY_BLOCK *dirblock, int block_num)
   extractUntil = -1;                        // В эту переменную будет записан номер последнего файла в солид-блоке, который нужно обработать
   // Переберём все файлы в этом блоке
   for (curfile = dirblock->block_start(block_num); curfile < dirblock->block_end(block_num); curfile++) {
-    if (cmd->accept_file (dirblock, curfile))           // Если этот файл требуется обработать
+    if (cmd->accept_file (dirblock, curfile))    // Если этот файл требуется обработать
     {
-      if (dir->size[curfile]==0) {   // то если это каталог или пустой файл - сделаем это сразу
+      if (dir->size[curfile]==0) {               //   то если это каталог или пустой файл - сделаем это сразу
         outfile_open (FIRST_PASS);
         outfile_close(); }
       else
-        extractUntil = curfile;      // а иначе - запомним, что нужно распаковать блок как минимум до этого файла
+        extractUntil = curfile;                  //   а иначе - запомним, что нужно распаковать блок как минимум до этого файла
     }
   }
   if (extractUntil >= 0) {                       // Если в этом блоке нашлось что распаковывать - значит, распакуем! :)
@@ -225,7 +257,7 @@ void PROCESS::ExtractFiles (DIRECTORY_BLOCK *dirblock, int block_num)
     bytes_left = data_block.compsize;            //   Размер упакованных данных в солид-блоке
     curfile = dirblock->block_start (block_num); // Номер первого файла в этом солид-блоке
     outfile_open (SECOND_PASS);                  // Откроем первый выходной файл
-    char *compressor = AddTempfile (data_block.compressor);  // Добавим "tempfile" между компрессорами если не хватает памяти для распаковки
+    char *compressor = AddTempfile (data_block.compressor, cmd);  // Добавим "tempfile" между компрессорами если не хватает памяти для распаковки
     int result = MultiDecompress (compressor? compressor : data_block.compressor, global_callback, this);
     CHECK (result!=FREEARC_ERRCODE_INVALID_COMPRESSOR, (s,"ERROR: unsupported compression method %s", data_block.compressor));
     CHECK (result>=0 || result==FREEARC_ERRCODE_NO_MORE_DATA_REQUIRED, (s,"ERROR: archive data corrupted (decompression fails)"));
@@ -243,9 +275,7 @@ PROCESS::PROCESS (COMMAND* _cmd, BASEUI* _UI, uint64 &total_files, uint64 &origs
 {
   CurrentProcess = this;
   SetCompressionThreads (GetProcessorsCount());
-
-  arcinfo.arcfile.open (cmd->arcname, READ_MODE);                     // Откроем файл архива
-  arcinfo.read_structure();                                           // Прочитаем структуру архива
+  OpenArchive();                                                      // Откроем файл архива и прочитаем структуру архива
   total_files = origsize = compsize = 0;
 
   iterate_array (i, arcinfo.control_blocks_descriptors) {             // Переберём все служебные блоки в архиве...
@@ -266,20 +296,44 @@ PROCESS::PROCESS (COMMAND* _cmd, BASEUI* _UI, uint64 &total_files, uint64 &origs
 ** Головная процедура выполнения команды над архивом **************************
 ******************************************************************************/
 
+// Откроем файл архива и прочитаем структуру архива
+// Для SFX пробует соответствующий .arc файл если SFX-модуль не содержит архива
+void PROCESS::OpenArchive()
+{
+#ifdef FREEARC_SFX
+  SET_JMP_POINT_GOTO(try_arc);
+try_exe:
+#endif
+  arcinfo.arcfile.open (cmd->arcname, READ_MODE);         // Откроем файл архива
+  arcinfo.read_structure();                               // Прочитаем структуру архива
+#ifdef FREEARC_SFX
+  RESET_JMP_POINT();
+  return;
+
+try_arc:                                                  // Откроем файл с тем же именем что SFX, но расширением .arc
+  SET_JMP_POINT_GOTO(try_exe);                            // При ошибке с .arc снова попытаемся открыть .exe чтобы вывести сообщение об ошибке с .exe
+  arcinfo.arcfile.setname (cmd->arcname);
+  arcinfo.arcfile.change_executable_ext (FREEARC_FILE_EXTENSION);
+  arcinfo.arcfile.open (READ_MODE);
+  arcinfo.read_structure();
+  RESET_JMP_POINT();
+#endif
+}
+
+
 // Читает структуру архива и вызывает в зависимости от выполняемой команды
 // ListFiles для каждого блока каталога или ExtractFiles для каждого солид-блока
 PROCESS::PROCESS (COMMAND* _cmd, BASEUI* _UI) : cmd(_cmd), UI(_UI)
 {
   CurrentProcess = this;
   cmd->Prepare();
+  OpenArchive();                                                      // Откроем файл архива и прочитаем структуру архива
 
-  arcinfo.arcfile.open (cmd->arcname, READ_MODE);                     // Откроем файл архива
-  arcinfo.read_structure();                                           // Прочитаем структуру архива
   // Выведем заголовок операции на экран и запросим у пользователя разрешение на распаковку SFX
   if (!UI->AllowProcessing (cmd->cmd, cmd->silent, MYFILE(cmd->arcname).displayname(), &arcinfo.arcComment[0], arcinfo.arcComment.size, cmd->outpath.utf8name)) {
     cmd->ok = FALSE;  return;
   }
-  if (cmd->cmd!='t')  outfile.SetBaseDir (UI->GetOutDir());
+  if (cmd->cmd!='t')       outfile.SetBaseDir (UI->GetOutDir());
 
   writtenBytes = 0;
   if (cmd->list_cmd())     UI->ListHeader (*cmd);
